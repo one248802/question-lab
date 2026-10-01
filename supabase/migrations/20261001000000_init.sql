@@ -65,7 +65,21 @@ create table public.classes (
   name               text not null check (char_length(btrim(name)) between 1 and 40),
   grade              smallint check (grade is null or grade between 1 and 6),
   class_code         text not null unique check (class_code ~ '^[A-Z0-9]{6}$'),
-  show_vote_results  boolean not null default false,
+
+  -- 투표 설정 (학급별, 교사가 설정 화면에서 바꿈)
+  --  max_votes          : 1인당 투표 가능 개수 (1~20). 줄여도 이미 행사한 표는 지우지 않습니다.
+  --  allow_self_vote    : 자기 질문에 투표 허용
+  --  voting_open        : 투표 진행 중. false 면 새 투표와 취소 모두 불가
+  --  allow_vote_change  : 투표 진행 중 취소(바꾸기) 허용
+  --  show_results_during_voting / show_results_after_voting
+  --                     : 학생 화면에 투표 수 공개 (투표 중 / 투표 종료 후)
+  max_votes                   smallint not null default 3 check (max_votes between 1 and 20),
+  allow_self_vote             boolean  not null default false,
+  voting_open                 boolean  not null default false,
+  allow_vote_change           boolean  not null default true,
+  show_results_during_voting  boolean  not null default false,
+  show_results_after_voting   boolean  not null default true,
+
   created_at         timestamptz not null default now()
 );
 create index classes_teacher_id_idx on public.classes (teacher_id);
@@ -144,6 +158,31 @@ set search_path = ''
 as $$
   select ss.student_id from public.student_sessions ss
   where ss.auth_user_id = auth.uid();
+$$;
+
+-- 지금 학생에게 투표 수를 보여 줄지: 투표 중이면 during, 종료 후면 after 설정을 따름
+create or replace function public.vote_results_visible(
+  p_voting_open boolean,
+  p_show_during boolean,
+  p_show_after  boolean
+)
+returns boolean
+language sql immutable
+set search_path = ''
+as $$
+  select case when p_voting_open then p_show_during else p_show_after end;
+$$;
+
+-- 학생이 현재 쓰고 있는 표 수 (숨겨진 질문에 한 표는 세지 않음)
+create or replace function public.student_vote_count(p_student_id uuid)
+returns int
+language sql stable security definer
+set search_path = ''
+as $$
+  select count(*)::int
+  from public.votes v
+  join public.questions q on q.id = v.question_id
+  where v.student_id = p_student_id and q.is_hidden = false;
 $$;
 
 -- 헷갈리는 글자(0, O, 1, I)를 뺀 6자리 클래스 코드 생성
@@ -288,8 +327,10 @@ create policy "votes: teacher read" on public.votes
 revoke all on all tables in schema public from anon;
 revoke all on public.student_sessions from authenticated;
 revoke insert, update on public.classes from authenticated;
-grant insert (name, grade, show_vote_results) on public.classes to authenticated;
-grant update (name, grade, show_vote_results) on public.classes to authenticated;
+grant insert (name, grade, max_votes, allow_self_vote, voting_open, allow_vote_change,
+               show_results_during_voting, show_results_after_voting) on public.classes to authenticated;
+grant update (name, grade, max_votes, allow_self_vote, voting_open, allow_vote_change,
+               show_results_during_voting, show_results_after_voting) on public.classes to authenticated;
 revoke insert, update on public.questions from authenticated;
 grant update (is_hidden) on public.questions to authenticated;
 revoke insert, update, delete on public.votes from authenticated;
@@ -358,7 +399,13 @@ as $$
     'class_id',          c.id,
     'class_name',        c.name,
     'grade',             c.grade,
-    'show_vote_results', c.show_vote_results
+    'max_votes',         c.max_votes,
+    'allow_self_vote',   c.allow_self_vote,
+    'voting_open',       c.voting_open,
+    'allow_vote_change', c.allow_vote_change,
+    'show_vote_counts',  public.vote_results_visible(
+                           c.voting_open, c.show_results_during_voting, c.show_results_after_voting),
+    'my_vote_count',     public.student_vote_count(s.id)
   )
   from public.students s
   join public.classes c on c.id = s.class_id
@@ -435,7 +482,8 @@ as $$
   delete from public.student_sessions where auth_user_id = auth.uid();
 $$;
 
--- 우리 반 질문 목록 (작성자 정보 없음, 투표 수는 공개 설정일 때만)
+-- 우리 반 질문 목록 (작성자 정보 없음)
+-- vote_count 는 투표 중이면 show_results_during_voting, 종료 후면 show_results_after_voting 일 때만 반환
 create or replace function public.list_class_questions()
 returns table (
   id uuid,
@@ -467,7 +515,8 @@ begin
     q.created_at,
     q.student_id = v_student_id,
     exists (select 1 from public.votes v where v.question_id = q.id and v.student_id = v_student_id),
-    case when v_class.show_vote_results
+    case when public.vote_results_visible(
+           v_class.voting_open, v_class.show_results_during_voting, v_class.show_results_after_voting)
       then (select count(*)::int from public.votes v where v.question_id = q.id)
       else null end
   from public.questions q
@@ -510,33 +559,70 @@ end;
 $$;
 
 -- 투표 / 투표 취소 (토글). 반환값: 투표한 상태면 true
+--  규칙
+--  - voting_open = false        : 새 투표, 취소 모두 불가 (VOTING_CLOSED)
+--  - 새 투표                    : 내 표 수 >= max_votes 이면 불가 (VOTE_LIMIT_REACHED)
+--                                 allow_self_vote = false 이고 내 질문이면 불가 (SELF_VOTE_NOT_ALLOWED)
+--  - 취소                       : allow_vote_change = true 이면 가능.
+--                                 false 여도 max_votes 를 넘게 갖고 있으면(교사가 개수를 줄인 경우)
+--                                 max_votes 까지 줄이는 취소는 허용합니다. (VOTE_CHANGE_NOT_ALLOWED)
+--  - max_votes 를 줄여도 기존 표는 지우지 않습니다.
+--  - 내 표 수는 숨겨진 질문의 표를 빼고 셉니다. (숨겨진 질문의 표는 취소할 수 없으므로)
 create or replace function public.toggle_vote(p_question_id uuid)
 returns boolean
 language plpgsql security definer
 set search_path = ''
 as $$
 declare
-  v_student public.students%rowtype;
+  v_student   public.students%rowtype;
+  v_class     public.classes%rowtype;
+  v_question  public.questions%rowtype;
+  v_my_votes  int;
 begin
-  select s.* into v_student from public.students s where s.id = public.current_student_id();
+  -- 학생 행을 잠가서 같은 학생이 여러 기기에서 동시에 투표해도 개수 제한을 넘지 않게 합니다.
+  select s.* into v_student from public.students s
+  where s.id = public.current_student_id()
+  for update;
   if not found then
     raise exception 'NOT_JOINED';
   end if;
-  if not exists (
-    select 1 from public.questions q
-    where q.id = p_question_id and q.class_id = v_student.class_id and q.is_hidden = false
-  ) then
+
+  select c.* into v_class from public.classes c where c.id = v_student.class_id;
+
+  select q.* into v_question from public.questions q
+  where q.id = p_question_id and q.class_id = v_student.class_id and q.is_hidden = false;
+  if not found then
     raise exception 'QUESTION_NOT_FOUND';
   end if;
 
-  delete from public.votes where question_id = p_question_id and student_id = v_student.id;
-  if found then
+  if not v_class.voting_open then
+    raise exception 'VOTING_CLOSED';
+  end if;
+
+  v_my_votes := public.student_vote_count(v_student.id);
+
+  if exists (
+    select 1 from public.votes v
+    where v.question_id = p_question_id and v.student_id = v_student.id
+  ) then
+    -- 취소
+    if not v_class.allow_vote_change and v_my_votes <= v_class.max_votes then
+      raise exception 'VOTE_CHANGE_NOT_ALLOWED';
+    end if;
+    delete from public.votes where question_id = p_question_id and student_id = v_student.id;
     return false;
   end if;
 
+  -- 새 투표
+  if not v_class.allow_self_vote and v_question.student_id = v_student.id then
+    raise exception 'SELF_VOTE_NOT_ALLOWED';
+  end if;
+  if v_my_votes >= v_class.max_votes then
+    raise exception 'VOTE_LIMIT_REACHED';
+  end if;
+
   insert into public.votes (question_id, student_id)
-  values (p_question_id, v_student.id)
-  on conflict (question_id, student_id) do nothing;
+  values (p_question_id, v_student.id);
   return true;
 end;
 $$;

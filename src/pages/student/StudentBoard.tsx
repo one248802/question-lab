@@ -60,7 +60,21 @@ export default function StudentBoard() {
     return () => window.clearTimeout(t)
   }, [notice])
 
-  const showVotes = Boolean(me?.show_vote_results)
+  const showVotes = Boolean(me?.show_vote_counts)
+  // 목록에는 숨겨지지 않은 질문만 있으므로 서버의 my_vote_count 와 같은 기준입니다.
+  const myVotes = questions.filter((q) => q.voted_by_me).length
+
+  /** 이 질문의 투표 버튼을 누를 수 없는 이유 (누를 수 있으면 null). 서버도 같은 규칙으로 검사합니다. */
+  const voteBlockedReason = (q: BoardQuestion): string | null => {
+    if (!me) return null
+    if (!me.voting_open) return '지금은 투표 시간이 아니에요.'
+    if (q.voted_by_me) {
+      return !me.allow_vote_change && myVotes <= me.max_votes ? '이번 투표는 바꿀 수 없어요.' : null
+    }
+    if (q.is_mine && !me.allow_self_vote) return '내 질문에는 투표할 수 없어요.'
+    if (myVotes >= me.max_votes) return '투표할 수 있는 개수를 다 썼어요.'
+    return null
+  }
   const activeSort: Sort = showVotes ? sort : 'new'
 
   const sorted = useMemo(() => {
@@ -162,13 +176,17 @@ export default function StudentBoard() {
             </div>
           </div>
 
+          <VoteStatus me={me} myVotes={myVotes} />
+
           <ErrorBox message={error} />
 
           {sorted.length === 0 ? (
             <EmptyState icon={<Inbox className="size-14" />} title="아직 질문이 없어요" />
           ) : (
             <ul className="grid gap-4 sm:grid-cols-2">
-              {sorted.map((q) => (
+              {sorted.map((q) => {
+                const blocked = voteBlockedReason(q)
+                return (
                 <li key={q.id} className="flex flex-col gap-4 rounded-3xl border-2 border-line bg-paper p-5 shadow-pop">
                   {q.is_mine && (
                     <span className="self-start rounded-full bg-butter-soft px-2 py-1 text-sm font-bold text-butter-ink">내 질문</span>
@@ -179,13 +197,16 @@ export default function StudentBoard() {
                     <button
                       type="button"
                       onClick={() => toggleVote(q)}
+                      disabled={blocked !== null}
+                      title={blocked ?? undefined}
                       aria-pressed={q.voted_by_me}
                       aria-label={q.voted_by_me ? '투표 취소' : '투표하기'}
                       className={cx(
                         'inline-flex min-h-12 items-center gap-2 rounded-2xl border-2 px-4 text-lg font-bold transition active:scale-95',
+                        'disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100',
                         q.voted_by_me
                           ? 'border-pink bg-pink-soft text-pink-ink shadow-pop-sm'
-                          : 'border-line-strong bg-paper text-ink-soft hover:border-pink',
+                          : 'border-line-strong bg-paper text-ink-soft enabled:hover:border-pink',
                       )}
                     >
                       <Heart className={cx('size-6', q.voted_by_me && 'fill-current')} aria-hidden />
@@ -193,7 +214,8 @@ export default function StudentBoard() {
                     </button>
                   </div>
                 </li>
-              ))}
+                )
+              })}
             </ul>
           )}
         </section>
@@ -204,6 +226,27 @@ export default function StudentBoard() {
           <div className="rounded-2xl border-2 border-[#6fc9a4] bg-mint px-6 py-3 text-xl font-bold shadow-pop">{notice}</div>
         </div>
       )}
+    </div>
+  )
+}
+
+/** 투표 진행 상태와 남은 표 */
+function VoteStatus({ me, myVotes }: { me: StudentContext; myVotes: number }) {
+  if (!me.voting_open) {
+    return (
+      <p className="rounded-2xl border-2 border-line bg-paper px-4 py-3 text-lg font-bold text-ink-soft">
+        지금은 투표 시간이 아니에요.
+      </p>
+    )
+  }
+  const over = myVotes - me.max_votes
+  return (
+    <div className="flex flex-col gap-1 rounded-2xl border-2 border-pink bg-pink-soft px-4 py-3 text-lg font-bold text-pink-ink">
+      <p className="inline-flex items-center gap-2">
+        <Heart className="size-5 fill-current" aria-hidden />
+        투표 중 · 남은 표 {Math.max(0, me.max_votes - myVotes)} / {me.max_votes}
+      </p>
+      {over > 0 && <p className="text-base">투표 개수가 줄었어요. 투표 {over}개를 취소해 주세요.</p>}
     </div>
   )
 }

@@ -11,7 +11,13 @@ export interface ClassRoom {
   name: string
   grade: number | null
   class_code: string
-  show_vote_results: boolean
+  /** 1인당 투표 가능 개수 */
+  max_votes: number
+  allow_self_vote: boolean
+  voting_open: boolean
+  allow_vote_change: boolean
+  show_results_during_voting: boolean
+  show_results_after_voting: boolean
   created_at: string
 }
 
@@ -61,5 +67,12 @@ export interface StudentContext {
   class_id: string
   class_name: string
   grade: number | null
-  show_vote_results: boolean
+  max_votes: number
+  allow_self_vote: boolean
+  voting_open: boolean
+  allow_vote_change: boolean
+  /** 지금 학생 화면에 투표 수를 보여 주는지 (투표 중/종료 후 설정을 반영한 값) */
+  show_vote_counts: boolean
+  /** 숨겨지지 않은 질문에 한 내 표 수 */
+  my_vote_count: number
 }
