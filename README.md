@@ -23,7 +23,7 @@ npm run build
    - Email: 사용 (교사 로그인)
    - **Allow anonymous sign-ins: 켜기** (학생 입장에 필요)
 4. **Authentication → URL Configuration**: Site URL을 배포 주소로 설정
-5. `.env`에 `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` 입력
+5. `.env`에 `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`(또는 `VITE_SUPABASE_ANON_KEY`) 입력
    (service_role key는 절대 프론트엔드에 넣지 마세요)
 
 ## 구조
