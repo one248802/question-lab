@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Noto Sans KR", system-ui, -apple-system, "Apple SD Gothic Neo", sans-serif;
+  --font-display: "Jua", "Noto Sans KR", sans-serif;
+
+  --color-cream: #fffbf2;
+  --color-paper: #ffffff;
+  --color-ink: #34334a;
+  --color-ink-soft: #6b6a80;
+  --color-line: #e4ddd0;
+  --color-line-strong: #cfc6b6;
+
+  --color-butter: #ffd966;
+  --color-butter-soft: #fff4cc;
+  --color-butter-ink: #8a6500;
+  --color-mint: #8fdcbc;
+  --color-mint-soft: #e2f6ec;
+  --color-mint-ink: #1f7a55;
+  --color-sky: #9fcdfb;
+  --color-sky-soft: #e3f1ff;
+  --color-sky-ink: #1f5f9e;
+  --color-pink: #ffb3cc;
+  --color-pink-soft: #ffe8f0;
+  --color-pink-ink: #a83763;
+  --color-lilac: #c4b5fd;
+  --color-lilac-soft: #efeaff;
+  --color-lilac-ink: #5b45b0;
+  --color-peach: #ffc4a3;
+  --color-peach-soft: #fff0e6;
+  --color-peach-ink: #a4501c;
+
+  --shadow-pop: 4px 4px 0 0 rgb(52 51 74 / 0.13);
+  --shadow-pop-sm: 2px 2px 0 0 rgb(52 51 74 / 0.13);
+  --shadow-pop-lg: 6px 6px 0 0 rgb(52 51 74 / 0.12);
+}
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-cream text-ink font-sans antialiased;
+    min-height: 100dvh;
+    word-break: keep-all;
+  }
+  button,
+  [role="button"] {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
+  :focus-visible {
+    outline: 3px solid var(--color-sky);
+    outline-offset: 2px;
+  }
+}
