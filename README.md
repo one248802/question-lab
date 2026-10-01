@@ -36,7 +36,7 @@ npm run build
 | `/teacher/login` | 교사 로그인 / 가입 |
 | `/teacher` | 대시보드 |
 | `/teacher/classes` | 학급 관리 (생성, 코드 재발급, 삭제) |
-| `/teacher/questions` | 우리반 질문 상자 (유형별 보기, 작성자, 투표 수, 숨기기) |
+| `/teacher/questions` | 우리반 질문 상자 (작성자, 투표 수, 숨기기) |
 | `/teacher/students` | 학생 관리 |
 | `/teacher/settings` | 설정 (학급별 투표 결과 공개) |
 
@@ -48,4 +48,6 @@ npm run build
   - `list_class_questions`: 작성자 정보 없이 반환, 투표 수는 `show_vote_results`가 ON일 때만 반환
   - `create_question`, `toggle_vote`: 학생 본인의 `class_id`에서만 동작
 - `votes (question_id, student_id)` unique 제약으로 중복 투표 방지.
-- 질문 유형은 `question_scopes`, `question_types` 조회 테이블에서 관리하므로 행을 추가/수정해 유형을 바꿀 수 있습니다.
+- 학생은 질문 내용만 등록합니다. 질문 분류(열린/닫힌, 확인/명료화/심화, 사실적/개념적/논쟁적/호기심 촉발)는 추후 교사가 만드는 "질문 분류 활동"에서 드래그앤드롭으로 합니다.
+  분류 체계와 범주는 `classification_frameworks`, `classification_categories` 조회 테이블에 있고, 활동 테이블 설계는 마이그레이션 9번 주석에 있습니다.
+- 교사 회원가입 시 `on_auth_user_created` 트리거가 `profiles` 행을 자동으로 만듭니다 (익명 학생 제외).

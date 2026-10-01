@@ -4,7 +4,6 @@ const MESSAGES: Record<string, string> = {
   INVALID_NUMBER: '번호를 확인해 주세요. (1~99)',
   INVALID_NAME: '이름을 확인해 주세요.',
   INVALID_CONTENT: '질문은 1~300자로 써 주세요.',
-  INVALID_TYPE: '질문 종류를 골라 주세요.',
   TOO_FAST: '잠깐! 조금 뒤에 다시 올려 주세요.',
   NOT_JOINED: '다시 입장해 주세요.',
   QUESTION_NOT_FOUND: '질문을 찾을 수 없어요.',

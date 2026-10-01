@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Heart, Inbox, LogOut, RefreshCw, UserRound } from 'lucide-react'
-import { QuestionBadges } from '../../components/QuestionBadges'
 import { QuestionComposer } from '../../components/QuestionComposer'
 import { Button, ChoiceChips, ErrorBox, EmptyState, Spinner, cx } from '../../components/ui'
 import { useAuth } from '../../contexts/AuthContext'
-import { useCategories } from '../../lib/categories'
 import { timeAgo } from '../../lib/date'
 import { toMessage } from '../../lib/errors'
 import { supabase } from '../../lib/supabase'
@@ -18,7 +16,6 @@ type Sort = 'new' | 'votes'
 export default function StudentBoard() {
   const navigate = useNavigate()
   const { user, isAnonymous, loading: authLoading } = useAuth()
-  const categories = useCategories()
 
   const [me, setMe] = useState<StudentContext | null>(null)
   const [questions, setQuestions] = useState<BoardQuestion[]>([])
@@ -77,8 +74,8 @@ export default function StudentBoard() {
     setRefreshing(false)
   }
 
-  const submitQuestion = async (content: string, scope: string, type: string) => {
-    const { error: err } = await supabase.rpc('create_question', { p_content: content, p_scope: scope, p_type: type })
+  const submitQuestion = async (content: string) => {
+    const { error: err } = await supabase.rpc('create_question', { p_content: content })
     if (err) return toMessage(err)
     setNotice('질문이 올라갔어요!')
     await load()
@@ -139,7 +136,7 @@ export default function StudentBoard() {
 
       <main className="mx-auto grid max-w-6xl gap-6 px-4 py-6 lg:grid-cols-[22rem_1fr] lg:items-start">
         <div className="lg:sticky lg:top-24">
-          <QuestionComposer categories={categories} onSubmit={submitQuestion} />
+          <QuestionComposer onSubmit={submitQuestion} />
         </div>
 
         <section className="flex flex-col gap-4">
@@ -173,10 +170,9 @@ export default function StudentBoard() {
             <ul className="grid gap-4 sm:grid-cols-2">
               {sorted.map((q) => (
                 <li key={q.id} className="flex flex-col gap-4 rounded-3xl border-2 border-line bg-paper p-5 shadow-pop">
-                  <div className="flex items-start justify-between gap-2">
-                    <QuestionBadges scope={q.question_scope} type={q.question_type} categories={categories} />
-                    {q.is_mine && <span className="shrink-0 rounded-full bg-butter-soft px-2 py-1 text-sm font-bold text-butter-ink">내 질문</span>}
-                  </div>
+                  {q.is_mine && (
+                    <span className="self-start rounded-full bg-butter-soft px-2 py-1 text-sm font-bold text-butter-ink">내 질문</span>
+                  )}
                   <p className="text-xl leading-relaxed font-medium break-words whitespace-pre-wrap">{q.content}</p>
                   <div className="mt-auto flex items-center justify-between gap-3">
                     <span className="text-sm text-ink-soft">익명의 질문 · {timeAgo(q.created_at)}</span>

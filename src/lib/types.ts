@@ -36,8 +36,6 @@ export interface TeacherQuestion {
   class_id: string
   student_id: string
   content: string
-  question_scope: string
-  question_type: string
   is_hidden: boolean
   created_at: string
   student: { student_number: number; name: string } | null
@@ -48,8 +46,6 @@ export interface TeacherQuestion {
 export interface BoardQuestion {
   id: string
   content: string
-  question_scope: string
-  question_type: string
   created_at: string
   is_mine: boolean
   voted_by_me: boolean
@@ -66,10 +62,4 @@ export interface StudentContext {
   class_name: string
   grade: number | null
   show_vote_results: boolean
-}
-
-export interface CategoryOption {
-  code: string
-  label: string
-  sort_order: number
 }
