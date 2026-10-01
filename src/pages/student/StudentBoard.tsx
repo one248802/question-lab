@@ -67,7 +67,8 @@ export default function StudentBoard() {
   /** 이 질문의 투표 버튼을 누를 수 없는 이유 (누를 수 있으면 null). 서버도 같은 규칙으로 검사합니다. */
   const voteBlockedReason = (q: BoardQuestion): string | null => {
     if (!me) return null
-    if (!me.voting_open) return '지금은 투표 시간이 아니에요.'
+    if (me.voting_status === 'before') return '투표가 아직 시작되지 않았어요.'
+    if (me.voting_status === 'closed') return '투표가 종료되었습니다.'
     if (q.voted_by_me) {
       return !me.allow_vote_change && myVotes <= me.max_votes ? '이번 투표는 바꿀 수 없어요.' : null
     }
@@ -232,10 +233,10 @@ export default function StudentBoard() {
 
 /** 투표 진행 상태와 남은 표 */
 function VoteStatus({ me, myVotes }: { me: StudentContext; myVotes: number }) {
-  if (!me.voting_open) {
+  if (me.voting_status !== 'open') {
     return (
       <p className="rounded-2xl border-2 border-line bg-paper px-4 py-3 text-lg font-bold text-ink-soft">
-        지금은 투표 시간이 아니에요.
+        {me.voting_status === 'before' ? '투표가 아직 시작되지 않았어요.' : '투표가 종료되었습니다.'}
       </p>
     )
   }

@@ -1,3 +1,6 @@
+/** 투표 상태: 시작 전 → 투표 중 → 종료 (종료 후 다시 열 수 있음) */
+export type VotingStatus = 'before' | 'open' | 'closed'
+
 export interface Profile {
   id: string
   email: string | null
@@ -14,7 +17,7 @@ export interface ClassRoom {
   /** 1인당 투표 가능 개수 */
   max_votes: number
   allow_self_vote: boolean
-  voting_open: boolean
+  voting_status: VotingStatus
   allow_vote_change: boolean
   show_results_during_voting: boolean
   show_results_after_voting: boolean
@@ -69,7 +72,7 @@ export interface StudentContext {
   grade: number | null
   max_votes: number
   allow_self_vote: boolean
-  voting_open: boolean
+  voting_status: VotingStatus
   allow_vote_change: boolean
   /** 지금 학생 화면에 투표 수를 보여 주는지 (투표 중/종료 후 설정을 반영한 값) */
   show_vote_counts: boolean

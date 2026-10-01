@@ -69,13 +69,15 @@ create table public.classes (
   -- 투표 설정 (학급별, 교사가 설정 화면에서 바꿈)
   --  max_votes          : 1인당 투표 가능 개수 (1~20). 줄여도 이미 행사한 표는 지우지 않습니다.
   --  allow_self_vote    : 자기 질문에 투표 허용
-  --  voting_open        : 투표 진행 중. false 면 새 투표와 취소 모두 불가
-  --  allow_vote_change  : 투표 진행 중 취소(바꾸기) 허용
+  --  voting_status      : 'before'(시작 전) → 'open'(투표 중) → 'closed'(종료), closed → open 으로 다시 열기 가능
+  --                       open 일 때만 투표/취소 가능. before 에는 결과를 항상 숨깁니다.
+  --  allow_vote_change  : 투표 중 취소(바꾸기) 허용
   --  show_results_during_voting / show_results_after_voting
-  --                     : 학생 화면에 투표 수 공개 (투표 중 / 투표 종료 후)
+  --                     : 학생 화면에 투표 수 공개 (open 일 때 / closed 일 때)
   max_votes                   smallint not null default 3 check (max_votes between 1 and 20),
   allow_self_vote             boolean  not null default false,
-  voting_open                 boolean  not null default false,
+  voting_status               text     not null default 'before'
+                                check (voting_status in ('before', 'open', 'closed')),
   allow_vote_change           boolean  not null default true,
   show_results_during_voting  boolean  not null default false,
   show_results_after_voting   boolean  not null default true,
@@ -160,17 +162,22 @@ as $$
   where ss.auth_user_id = auth.uid();
 $$;
 
--- 지금 학생에게 투표 수를 보여 줄지: 투표 중이면 during, 종료 후면 after 설정을 따름
+-- 지금 학생에게 투표 수를 보여 줄지
+--  before: 항상 숨김 / open: show_results_during_voting / closed: show_results_after_voting
 create or replace function public.vote_results_visible(
-  p_voting_open boolean,
-  p_show_during boolean,
-  p_show_after  boolean
+  p_voting_status text,
+  p_show_during   boolean,
+  p_show_after    boolean
 )
 returns boolean
 language sql immutable
 set search_path = ''
 as $$
-  select case when p_voting_open then p_show_during else p_show_after end;
+  select case p_voting_status
+    when 'open'   then p_show_during
+    when 'closed' then p_show_after
+    else false
+  end;
 $$;
 
 -- 학생이 현재 쓰고 있는 표 수 (숨겨진 질문에 한 표는 세지 않음)
@@ -223,6 +230,26 @@ $$;
 create trigger classes_before_insert
   before insert on public.classes
   for each row execute function public.classes_before_insert();
+
+-- 투표 상태는 before → open → closed 순서로만 바뀝니다. (closed → open 다시 열기 허용)
+create or replace function public.classes_check_voting_status()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if new.voting_status is distinct from old.voting_status
+     and (old.voting_status, new.voting_status) not in
+         (('before', 'open'), ('open', 'closed'), ('closed', 'open')) then
+    raise exception 'INVALID_VOTING_TRANSITION';
+  end if;
+  return new;
+end;
+$$;
+
+create trigger classes_check_voting_status
+  before update of voting_status on public.classes
+  for each row execute function public.classes_check_voting_status();
 
 -- 교사 회원가입 시 profiles 자동 생성 (익명 학생은 제외)
 -- classes.teacher_id 가 profiles 를 참조하므로, 이 행이 없으면 학급을 만들 수 없습니다.
@@ -327,9 +354,10 @@ create policy "votes: teacher read" on public.votes
 revoke all on all tables in schema public from anon;
 revoke all on public.student_sessions from authenticated;
 revoke insert, update on public.classes from authenticated;
-grant insert (name, grade, max_votes, allow_self_vote, voting_open, allow_vote_change,
+-- voting_status 는 insert 할 수 없으므로 새 학급은 항상 'before' 로 시작합니다.
+grant insert (name, grade, max_votes, allow_self_vote, allow_vote_change,
                show_results_during_voting, show_results_after_voting) on public.classes to authenticated;
-grant update (name, grade, max_votes, allow_self_vote, voting_open, allow_vote_change,
+grant update (name, grade, max_votes, allow_self_vote, voting_status, allow_vote_change,
                show_results_during_voting, show_results_after_voting) on public.classes to authenticated;
 revoke insert, update on public.questions from authenticated;
 grant update (is_hidden) on public.questions to authenticated;
@@ -401,10 +429,10 @@ as $$
     'grade',             c.grade,
     'max_votes',         c.max_votes,
     'allow_self_vote',   c.allow_self_vote,
-    'voting_open',       c.voting_open,
+    'voting_status',     c.voting_status,
     'allow_vote_change', c.allow_vote_change,
     'show_vote_counts',  public.vote_results_visible(
-                           c.voting_open, c.show_results_during_voting, c.show_results_after_voting),
+                           c.voting_status, c.show_results_during_voting, c.show_results_after_voting),
     'my_vote_count',     public.student_vote_count(s.id)
   )
   from public.students s
@@ -483,7 +511,8 @@ as $$
 $$;
 
 -- 우리 반 질문 목록 (작성자 정보 없음)
--- vote_count 는 투표 중이면 show_results_during_voting, 종료 후면 show_results_after_voting 일 때만 반환
+-- vote_count: before 이면 항상 null, open 이면 show_results_during_voting,
+--             closed 이면 show_results_after_voting 이 true 일 때만 반환
 create or replace function public.list_class_questions()
 returns table (
   id uuid,
@@ -516,7 +545,7 @@ begin
     q.student_id = v_student_id,
     exists (select 1 from public.votes v where v.question_id = q.id and v.student_id = v_student_id),
     case when public.vote_results_visible(
-           v_class.voting_open, v_class.show_results_during_voting, v_class.show_results_after_voting)
+           v_class.voting_status, v_class.show_results_during_voting, v_class.show_results_after_voting)
       then (select count(*)::int from public.votes v where v.question_id = q.id)
       else null end
   from public.questions q
@@ -560,7 +589,8 @@ $$;
 
 -- 투표 / 투표 취소 (토글). 반환값: 투표한 상태면 true
 --  규칙
---  - voting_open = false        : 새 투표, 취소 모두 불가 (VOTING_CLOSED)
+--  - voting_status = 'before'    : 새 투표, 취소 모두 불가 (VOTING_NOT_STARTED)
+--  - voting_status = 'closed'    : 새 투표, 취소 모두 불가 (VOTING_CLOSED)
 --  - 새 투표                    : 내 표 수 >= max_votes 이면 불가 (VOTE_LIMIT_REACHED)
 --                                 allow_self_vote = false 이고 내 질문이면 불가 (SELF_VOTE_NOT_ALLOWED)
 --  - 취소                       : allow_vote_change = true 이면 가능.
@@ -595,7 +625,9 @@ begin
     raise exception 'QUESTION_NOT_FOUND';
   end if;
 
-  if not v_class.voting_open then
+  if v_class.voting_status = 'before' then
+    raise exception 'VOTING_NOT_STARTED';
+  elsif v_class.voting_status <> 'open' then
     raise exception 'VOTING_CLOSED';
   end if;
 

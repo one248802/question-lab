@@ -5,14 +5,14 @@ import { Button, Card, ChoiceChips, ErrorBox, Input, Label, PageTitle, Spinner, 
 import { useTeacher } from '../../contexts/TeacherContext'
 import { toMessage } from '../../lib/errors'
 import { supabase } from '../../lib/supabase'
-import type { ClassRoom } from '../../lib/types'
+import type { ClassRoom, VotingStatus } from '../../lib/types'
 
 type VoteSettingsPatch = Partial<
   Pick<
     ClassRoom,
     | 'max_votes'
     | 'allow_self_vote'
-    | 'voting_open'
+    | 'voting_status'
     | 'allow_vote_change'
     | 'show_results_during_voting'
     | 'show_results_after_voting'
@@ -21,6 +21,13 @@ type VoteSettingsPatch = Partial<
 
 const MAX_VOTES_PRESETS = [1, 2, 3, 5]
 const MAX_VOTES_LIMIT = 20
+
+/** 상태별 설명과 다음 단계 버튼 (before → open → closed, closed → open 다시 열기) */
+const VOTING_STEPS: Record<VotingStatus, { text: string; next: VotingStatus; action: string }> = {
+  before: { text: '투표 시작 전이에요 (투표 불가, 결과 비공개)', next: 'open', action: '투표 시작' },
+  open: { text: '투표 중이에요', next: 'closed', action: '투표 종료' },
+  closed: { text: '투표가 종료되었어요 (투표·취소 불가)', next: 'open', action: '투표 다시 열기' },
+}
 
 export default function SettingsPage() {
   const { classes, loading, reload, profile, reloadProfile } = useTeacher()
@@ -113,6 +120,7 @@ function ClassVoteSettings({
   busy: boolean
   onChange: (patch: VoteSettingsPatch) => Promise<void>
 }) {
+  const step = VOTING_STEPS[c.voting_status]
   const isPreset = MAX_VOTES_PRESETS.includes(c.max_votes)
   const [custom, setCustom] = useState(!isPreset)
   const [customValue, setCustomValue] = useState(String(c.max_votes))
@@ -135,15 +143,15 @@ function ClassVoteSettings({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-xl font-bold">{c.name}</p>
-          <p className="text-ink-soft">{c.voting_open ? '투표 중이에요' : '투표가 닫혀 있어요 (투표·취소 불가)'}</p>
+          <p className="text-ink-soft">{step.text}</p>
         </div>
         <Button
-          variant={c.voting_open ? 'danger' : 'mint'}
+          variant={c.voting_status === 'open' ? 'danger' : 'mint'}
           loading={busy}
-          onClick={() => onChange({ voting_open: !c.voting_open })}
+          onClick={() => onChange({ voting_status: step.next })}
         >
-          {c.voting_open ? <Square className="size-5" aria-hidden /> : <Play className="size-5" aria-hidden />}
-          {c.voting_open ? '투표 종료' : '투표 시작'}
+          {c.voting_status === 'open' ? <Square className="size-5" aria-hidden /> : <Play className="size-5" aria-hidden />}
+          {step.action}
         </Button>
       </div>
 
