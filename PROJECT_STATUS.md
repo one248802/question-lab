@@ -129,8 +129,8 @@
 ### 실제 Supabase 검증 (2026-10-02)
 | 항목 | 결과 |
 | --- | --- |
-| `NODE_USE_ENV_PROXY=1 node scripts/e2e-supabase.mjs` | ✅ **58/58 통과**. supabase-js(앱과 같은 라이브러리)로 실제 프로젝트에 요청 |
-| `node scripts/e2e-browser.mjs` (dev 서버 실행 중) | ✅ **34/34 통과**. 실제 Chromium으로 교사·학생 A·학생 B를 각각 다른 브라우저 세션으로 조작 |
+| `NODE_USE_ENV_PROXY=1 node scripts/e2e-supabase.mjs` | ✅ **70/70 통과** (질문 삭제·투표 초기화 12개 포함). supabase-js(앱과 같은 라이브러리)로 실제 프로젝트에 요청 |
+| `node scripts/e2e-browser.mjs` (dev 서버 실행 중) | ✅ **44/44 통과** (질문 삭제·투표 초기화 10개 포함, 확인창 취소/확인 모두). 실제 Chromium으로 교사·학생 A·학생 B를 각각 다른 브라우저 세션으로 조작 |
 
 - 검증한 흐름: 교사 회원가입·로그아웃·로그인 → profiles 자동 생성 → 학급 생성·클래스 코드 → 학생 익명 로그인·입장(틀린 코드, 이름 불일치 거부) → 질문 등록(내용만, 3초 제한, 빈 질문 거부) → 익명성(학생 화면·학생이 받은 응답에 작성자 없음, 학생의 테이블 직접 조회/추가 불가, 내부 함수 호출 불가) → 교사만 작성자 확인 → before/open/closed 규칙과 잘못된 전환 거부 → max_votes(줄여도 기존 표 유지, 초과분 취소) → 자기 질문 투표 → 투표 바꾸기 → 투표 중/종료 후 결과 공개 → 다시 열기 → 질문 숨기기 → 모바일 폭(390px) 가로 스크롤 없음
 - **앱 버그는 발견되지 않았습니다.** 고친 것은 테스트 스크립트(선택자, 투표 응답 대기)와 테스트 환경(아래)뿐입니다.
@@ -151,7 +151,7 @@
 | Claude 환경 변수 | 설정 완료: `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`. 코드는 `VITE_SUPABASE_ANON_KEY`도 읽음 |
 | 네트워크 | `*.supabase.co` 허용 완료. Auth API 200 응답 확인 |
 | **migration** | ✅ **적용 완료 (2026-10-02)**. 현재 main의 `20261001000000_init.sql`을 SQL Editor에서 실행. 그 전에 PR #1 시절 구버전 migration이 실행되어 있어서 `supabase/dev/reset_app_schema.sql`로 앱 객체만 정리한 뒤 다시 적용 |
-| migration `20261002120000_reset_class_votes.sql` | ⏳ 아직 실제 DB에 적용하지 않음 (투표 초기화 RPC) |
+| migration `20261002120000_reset_class_votes.sql` | ✅ 적용 완료 (2026-10-02, SQL Editor). 투표 초기화 RPC |
 | Anonymous Sign-ins | ✅ 켜져 있음. 실제 익명 로그인으로 학생 입장 확인 |
 | Confirm email | 꺼져 있음 (`mailer_autoconfirm: true`, 가입하면 바로 로그인). 운영 전 결정 필요 |
 | Site URL | 확인하지 않음. 배포 후 Authentication → URL Configuration에서 설정 |
@@ -239,7 +239,7 @@
   allow_vote_change, show_results_during_voting, show_results_after_voting. 규칙은 toggle_vote RPC 에서 검사
 - 질문 분류 체계 조회 테이블(classification_frameworks/categories)만 있고, 분류 활동 테이블은 init migration 9번에 설계 주석만 있음
 - 실제 Supabase(https://ogmsfyuhtrljcubuhclq.supabase.co)에 init migration 적용 완료, PR #2 로 main 병합 완료 (2026-10-02)
-- 검증: ./scripts/test-db.sh 77/77, scripts/e2e-supabase.mjs 58/58, scripts/e2e-browser.mjs 34/34,
+- 검증: ./scripts/test-db.sh 77/77, scripts/e2e-supabase.mjs 70/70, scripts/e2e-browser.mjs 44/44,
   npm run build 통과, lint 경고 10개는 기존 것
 
 규칙:
