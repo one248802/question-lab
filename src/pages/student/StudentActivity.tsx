@@ -1,5 +1,18 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import {
+  DndContext,
+  DragOverlay,
+  MouseSensor,
+  TouchSensor,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type Announcements,
+  type DragEndEvent,
+  type DragStartEvent,
+} from '@dnd-kit/core'
 import { ArrowLeft, Inbox, LayoutGrid, RefreshCw, RotateCcw } from 'lucide-react'
 import { Button, ErrorBox, EmptyState, Spinner, cx } from '../../components/ui'
 import { useAuth } from '../../contexts/AuthContext'
@@ -41,6 +54,21 @@ function mergePlacement(saved: Placement, activity: ActivityForStudent): Placeme
   return next
 }
 
+// drag & drop 에서 영역을 구분하는 id. 미분류 칸은 'tray'
+const zoneId = (area: number | null) => (area === null ? 'tray' : `area-${area}`)
+const areaOfZone = (id: string): number | null => (id === 'tray' ? null : Number(id.slice('area-'.length)))
+
+// 화면 읽기 프로그램 안내 (키보드 끌기는 쓰지 않고, 카드 선택 → 「여기에 놓기」 버튼으로 옮김)
+const SCREEN_READER_INSTRUCTIONS = {
+  draggable: '카드를 누르면 선택돼요. 그다음 옮길 영역의 「여기에 놓기」 버튼을 누르세요. 마우스나 손가락으로 끌어서 옮길 수도 있어요.',
+}
+const ANNOUNCEMENTS: Announcements = {
+  onDragStart: () => '질문 카드를 집었어요.',
+  onDragOver: () => undefined,
+  onDragEnd: ({ over }) => (over ? '질문 카드를 옮겼어요.' : '질문 카드를 제자리에 두었어요.'),
+  onDragCancel: () => '옮기기를 취소했어요.',
+}
+
 function fetchActivity(activityId: string) {
   return Promise.all([
     supabase.rpc('get_my_student'),
@@ -57,6 +85,7 @@ export default function StudentActivity() {
   const [activity, setActivity] = useState<ActivityForStudent | null>(null)
   const [placement, setPlacement] = useState<Placement>({})
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [draggingId, setDraggingId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -100,10 +129,32 @@ export default function StudentActivity() {
     if (me && activity) writePlacement(storageKey(me.student_id, activity.id), next)
   }
 
-  const moveSelected = (area: number | null) => {
-    if (!selectedId) return
-    update({ ...placement, [selectedId]: area })
+  // tap-to-move 와 drag & drop 이 함께 쓰는 이동 함수 (같은 placement, 같은 sessionStorage)
+  const moveCard = (questionId: string, area: number | null) => {
+    update({ ...placement, [questionId]: area })
     setSelectedId(null)
+  }
+
+  const moveSelected = (area: number | null) => {
+    if (selectedId) moveCard(selectedId, area)
+  }
+
+  // 마우스: 6px 이상 움직이면 끌기 (짧은 클릭은 카드 선택)
+  // 터치: 0.2초 길게 누르면 끌기 (짧게 누르면 카드 선택, 그냥 밀면 화면 스크롤)
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
+  )
+  const onDragStart = (e: DragStartEvent) => {
+    setDraggingId(String(e.active.id))
+    setSelectedId(null)
+  }
+  const onDragEnd = (e: DragEndEvent) => {
+    setDraggingId(null)
+    if (!e.over) return
+    const area = areaOfZone(String(e.over.id))
+    const questionId = String(e.active.id)
+    if ((placement[questionId] ?? null) !== area) moveCard(questionId, area)
   }
 
   const resetAll = () => {
@@ -125,6 +176,7 @@ export default function StudentActivity() {
     ...(activity?.area_names ?? []).map((name, i) => ({ area: i, name })),
   ]
   const selectedArea = selectedId ? (placement[selectedId] ?? null) : undefined
+  const draggingQuestion = activity?.questions.find((q) => q.id === draggingId) ?? null
 
   return (
     <div className="min-h-dvh">
@@ -166,65 +218,133 @@ export default function StudentActivity() {
               </div>
             </div>
             <p className="rounded-2xl bg-paper px-4 py-3 text-lg">
-              {selectedId ? '옮길 영역의 「여기에 놓기」를 누르세요.' : '질문 카드를 누른 다음, 옮길 영역을 고르세요.'}
+              {selectedId
+                ? '옮길 영역의 「여기에 놓기」를 누르세요.'
+                : '질문 카드를 끌어서 영역에 놓거나, 카드를 누른 다음 옮길 영역을 고르세요.'}
             </p>
             <ErrorBox message={error} />
 
             {activity.questions.length === 0 ? (
               <EmptyState icon={<Inbox className="size-14" />} title="분류할 질문이 없어요" />
             ) : (
-              // 미분류 칸은 한 줄 전체, 영역들은 줄 너비를 나눠 채움 (좁으면 다음 줄로)
-              <div className="flex flex-wrap gap-4">
-                {zones.map((zone) => {
-                  const cards = activity.questions.filter((q) => (placement[q.id] ?? null) === zone.area)
-                  const canDropHere = selectedId !== null && selectedArea !== zone.area
-                  return (
-                    <section
-                      key={zone.area ?? 'tray'}
-                      aria-label={zone.name}
-                      className={cx(
-                        'flex min-h-40 flex-col gap-3 rounded-3xl border-2 p-4',
-                        zone.area === null ? 'w-full border-dashed border-line-strong bg-cream' : 'min-w-0 flex-1 basis-60 border-line bg-paper shadow-pop',
-                        canDropHere && 'border-mint ring-4 ring-mint/40',
-                      )}
+              <DndContext
+                sensors={sensors}
+                accessibility={{ screenReaderInstructions: SCREEN_READER_INSTRUCTIONS, announcements: ANNOUNCEMENTS }}
+                onDragStart={onDragStart}
+                onDragEnd={onDragEnd}
+                onDragCancel={() => setDraggingId(null)}
+              >
+                {/* 미분류 칸은 한 줄 전체, 영역들은 줄 너비를 나눠 채움 (좁으면 다음 줄로) */}
+                <div className="flex flex-wrap gap-4">
+                  {zones.map((zone) => (
+                    <Zone
+                      key={zoneId(zone.area)}
+                      area={zone.area}
+                      name={zone.name}
+                      canDropHere={selectedId !== null && selectedArea !== zone.area}
+                      onDropHere={() => moveSelected(zone.area)}
                     >
-                      <div className="flex items-center justify-between gap-2">
-                        <h2 className="text-xl font-bold break-words">{zone.name}</h2>
-                        <span className="shrink-0 rounded-full bg-line px-2 text-base font-bold text-ink-soft">{cards.length}</span>
-                      </div>
-                      {canDropHere && (
-                        <Button variant="mint" size="sm" onClick={() => moveSelected(zone.area)}>
-                          여기에 놓기
-                        </Button>
-                      )}
-                      <ul className={cx('flex flex-col gap-2', zone.area === null && 'sm:grid sm:grid-cols-2 lg:grid-cols-3')}>
-                        {cards.map((q) => (
-                          <li key={q.id}>
-                            <button
-                              type="button"
-                              aria-pressed={selectedId === q.id}
-                              onClick={() => setSelectedId((id) => (id === q.id ? null : q.id))}
-                              className={cx(
-                                'w-full rounded-2xl border-2 px-4 py-3 text-left text-lg leading-relaxed font-medium break-words transition',
-                                selectedId === q.id
-                                  ? 'border-[#e8c34f] bg-butter shadow-pop-sm'
-                                  : 'border-line bg-paper hover:border-line-strong',
-                              )}
-                            >
-                              {q.content}
-                            </button>
-                          </li>
+                      {activity.questions
+                        .filter((q) => (placement[q.id] ?? null) === zone.area)
+                        .map((q) => (
+                          <QuestionCard
+                            key={q.id}
+                            id={q.id}
+                            content={q.content}
+                            selected={selectedId === q.id}
+                            onToggle={() => setSelectedId((id) => (id === q.id ? null : q.id))}
+                          />
                         ))}
-                      </ul>
-                    </section>
-                  )
-                })}
-              </div>
+                    </Zone>
+                  ))}
+                </div>
+                <DragOverlay>
+                  {draggingQuestion && (
+                    <div className="rotate-2 rounded-2xl border-2 border-[#e8c34f] bg-butter px-4 py-3 text-lg leading-relaxed font-medium break-words shadow-pop-lg">
+                      {draggingQuestion.content}
+                    </div>
+                  )}
+                </DragOverlay>
+              </DndContext>
             )}
             <p className="text-sm text-ink-soft">분류 결과는 저장되지 않아요. 이 탭을 닫으면 사라져요.</p>
           </>
         )}
       </main>
     </div>
+  )
+}
+
+/** 분류 영역(또는 미분류 칸). 카드를 끌어다 놓을 수 있고, tap-to-move 의 「여기에 놓기」도 여기서 */
+function Zone({
+  area,
+  name,
+  canDropHere,
+  onDropHere,
+  children,
+}: {
+  area: number | null
+  name: string
+  canDropHere: boolean
+  onDropHere: () => void
+  children: ReactNode[]
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: zoneId(area) })
+  return (
+    <section
+      ref={setNodeRef}
+      aria-label={name}
+      className={cx(
+        'flex min-h-40 flex-col gap-3 rounded-3xl border-2 p-4 transition',
+        area === null ? 'w-full border-dashed border-line-strong bg-cream' : 'min-w-0 flex-1 basis-60 border-line bg-paper shadow-pop',
+        (canDropHere || isOver) && 'border-mint ring-4 ring-mint/40',
+        isOver && 'bg-mint-soft',
+      )}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-xl font-bold break-words">{name}</h2>
+        <span className="shrink-0 rounded-full bg-line px-2 text-base font-bold text-ink-soft">{children.length}</span>
+      </div>
+      {canDropHere && (
+        <Button variant="mint" size="sm" onClick={onDropHere}>
+          여기에 놓기
+        </Button>
+      )}
+      <ul className={cx('flex flex-col gap-2', area === null && 'sm:grid sm:grid-cols-2 lg:grid-cols-3')}>{children}</ul>
+    </section>
+  )
+}
+
+/** 질문 카드: 누르면 선택(tap-to-move), 끌면 drag & drop */
+function QuestionCard({
+  id,
+  content,
+  selected,
+  onToggle,
+}: {
+  id: string
+  content: string
+  selected: boolean
+  onToggle: () => void
+}) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id })
+  return (
+    <li>
+      <button
+        ref={setNodeRef}
+        type="button"
+        {...attributes}
+        {...listeners}
+        aria-pressed={selected}
+        onClick={onToggle}
+        className={cx(
+          'w-full cursor-grab touch-manipulation rounded-2xl border-2 px-4 py-3 text-left text-lg leading-relaxed font-medium break-words transition select-none',
+          selected ? 'border-[#e8c34f] bg-butter shadow-pop-sm' : 'border-line bg-paper hover:border-line-strong',
+          isDragging && 'opacity-40',
+        )}
+      >
+        {content}
+      </button>
+    </li>
   )
 }

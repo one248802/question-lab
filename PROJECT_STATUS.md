@@ -1,6 +1,6 @@
 # PROJECT_STATUS — 우리반 질문 상자
 
-> 마지막 정리: 2026-10-02 (질문 분류 활동 PR A 작업 중)
+> 마지막 정리: 2026-10-02 (질문 분류 활동 PR A 병합 완료, PR B 작업 중)
 > 다음 세션은 이 문서만 읽고 이어서 작업할 수 있도록 작성했습니다. 맨 아래 **작업 재개 프롬프트**를 그대로 붙여 넣으세요.
 
 ---
@@ -24,7 +24,7 @@
 ## 3. 브랜치 / 커밋 / PR
 
 - **기준 브랜치**: `main`. 모든 기능과 최신 migration이 `main`에 들어가 있습니다.
-- **main 최신 커밋**: `64f5fd8` — PR [one248802/question-lab#4](https://github.com/one248802/question-lab/pull/4) 병합 커밋 (2026-10-02)
+- **main 최신 커밋**: `c2f4de5` — PR [one248802/question-lab#5](https://github.com/one248802/question-lab/pull/5) 병합 커밋 (2026-10-02)
 - **작업 방식**: 작업마다 **최신 `main`에서 새 브랜치**를 만들고, PR로 `main`에 병합합니다.
   ```bash
   git fetch origin && git checkout -b <새 브랜치> origin/main
@@ -37,8 +37,8 @@
   | [one248802/question-lab#2](https://github.com/one248802/question-lab/pull/2) | 최신 스키마(투표 설정·분류 체계), 실제 Supabase 검증, 테스트 도구 | ✅ 병합 (`fdfab0b`) |
   | [one248802/question-lab#3](https://github.com/one248802/question-lab/pull/3) | PROJECT_STATUS.md 갱신 | ✅ 병합 (`f76ed3b`) |
   | [one248802/question-lab#4](https://github.com/one248802/question-lab/pull/4) | 교사 질문 삭제, 학급 투표 초기화 (migration `20261002120000`) | ✅ 병합 (`64f5fd8`) |
-  | (PR A, 작업 중) | 질문 분류 활동: 테이블·RLS·학생 RPC, 교사 화면, 학생 tap-to-move 분류 화면 (migration `20261002150000`) | 브랜치 `claude/classification-activity-a` |
-  | (PR B, 예정) | 분류 화면 drag & drop(dnd-kit), 분류 결과 PNG 저장 | PR A 병합 후 새 브랜치 |
+  | [one248802/question-lab#5](https://github.com/one248802/question-lab/pull/5) | 질문 분류 활동 PR A: 테이블·RLS·학생 RPC, 교사 화면, 학생 tap-to-move 분류 화면 (migration `20261002150000`) | ✅ 병합 (`c2f4de5`) |
+  | (PR B, 작업 중) | 분류 화면 drag & drop(dnd-kit), 분류 결과 PNG 저장. DB 변경 없음 | 브랜치 `claude/classification-activity-b` |
 
 - **PR #2에 들어간 주요 커밋**
 
@@ -110,7 +110,10 @@
   - **분류 결과(배치)는 DB에 저장하지 않습니다.** 새로고침에 대비해 이 탭의 `sessionStorage`에만 두고, 탭을 닫으면 사라집니다. 학생별 기록·집계·통계는 없습니다.
   - 학생은 테이블에 직접 접근하지 않고 읽기 전용 RPC만 씁니다: `list_open_classification_activities()`, `get_classification_activity(id)` — 우리 반에 공개된 활동만, **질문은 id와 내용만**(작성자·투표 정보 없음), 숨긴 질문은 제외
 - 질문이 삭제되면 활동에서도 빠지고(cascade), 학급을 지우면 활동도 지워집니다. 질문·투표 테이블과 기존 RPC, 통계는 바뀌지 않았습니다.
-- **예정 (PR B)**: drag & drop(dnd-kit), 분류 결과 PNG 저장(학생 번호·이름 포함, 학생 기기에만 저장)
+- **PR B (작업 중, 브랜치 `claude/classification-activity-b`, DB/migration 변경 없음)**
+  - ✅ drag & drop (`@dnd-kit/core`): 카드를 끌어 영역에 놓기. 마우스는 6px 움직이면, 터치는 0.2초 길게 누르면 끌기 시작(짧게 누르면 기존 tap-to-move 선택, 밀면 스크롤). tap-to-move 는 그대로 fallback 으로 유지하고 둘 다 같은 `moveCard` → 같은 placement / sessionStorage 사용. 화면 읽기 안내는 한국어로 「카드 선택 → 여기에 놓기」 방법을 안내(키보드 끌기는 쓰지 않음)
+  - ⏳ 분류 결과 PNG 저장: Canvas 2D 로 직접 그리기(활동 제목, 학급명, 학생 번호·이름, 날짜, 영역별 질문, 미분류 질문), 학생 기기에만 저장(다운로드 또는 모바일 공유 시트), Supabase Storage·서버 업로드 없음
+  - ⏳ 브라우저 테스트(마우스 끌기, 터치 길게 눌러 끌기, PNG 다운로드 검증)
 - 기존 조회 테이블 `classification_frameworks`, `classification_categories`(열린/닫힌, 확인/명료화/심화, 사실적/개념적/논쟁적/호기심 촉발 seed)는 **그대로 두고 쓰지 않습니다**. init migration 9번 섹션의 설계 메모(framework_code, classification_responses)는 이 설계로 대체되었습니다.
 
 ### 보안 설계 요약
@@ -172,7 +175,7 @@
 
 모든 작업은 최신 `main`에서 새 브랜치를 만들어 시작하고, DB 변경은 **새 migration 파일**로 합니다.
 
-1. 질문 분류 활동 PR A 마무리 → 병합 후 PR B(drag & drop, PNG 저장)를 새 브랜치에서
+1. 질문 분류 활동 PR B 마무리 (브랜치 `claude/classification-activity-b`): PNG 저장 → 브라우저 테스트 → PR
 2. 운영 전 Supabase 설정 결정: Confirm email 켤지, Site URL(배포 주소), 테스트 계정 정리
 3. 배포 (vercel.json 있음, 배포 환경 변수 `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` 필요) 후 배포 주소에서 `BASE_URL=<배포 주소> node scripts/e2e-browser.mjs` 로 한 번 더 확인
 4. 작은 미해결 항목 중 필요한 것 선택 (9번)
