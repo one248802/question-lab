@@ -35,6 +35,13 @@ npm run build
 ./scripts/test-db.sh
 ```
 
+실제 Supabase 프로젝트를 대상으로 한 검증 (테스트 학급은 끝나면 지워지고, 테스트 교사 계정은 Auth에 남습니다):
+
+```bash
+NODE_USE_ENV_PROXY=1 node scripts/e2e-supabase.mjs   # API 수준 (프록시 환경이 아니면 NODE_USE_ENV_PROXY 생략)
+npm run dev & node scripts/e2e-browser.mjs           # 브라우저 수준 (Chromium, 스크린샷은 e2e-shots/)
+```
+
 ## 구조
 
 | 경로 | 화면 |
