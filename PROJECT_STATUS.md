@@ -1,6 +1,6 @@
 # PROJECT_STATUS — 우리반 질문 상자
 
-> 마지막 정리: 2026-10-02 (실제 Supabase 적용 + 실제 환경 검증 완료)
+> 마지막 정리: 2026-10-02 (실제 Supabase 적용·검증 완료, PR #2 main 병합 완료)
 > 다음 세션은 이 문서만 읽고 이어서 작업할 수 있도록 작성했습니다. 맨 아래 **작업 재개 프롬프트**를 그대로 붙여 넣으세요.
 
 ---
@@ -23,23 +23,32 @@
 
 ## 3. 브랜치 / 커밋 / PR
 
-- **작업 브랜치**: `claude/admiring-edison-vllnk4`
-- **최근 커밋**: 이 문서를 갱신한 커밋이 브랜치의 최신 커밋입니다. 주요 커밋은 아래와 같습니다.
+- **기준 브랜치**: `main`. 모든 기능과 최신 migration이 `main`에 들어가 있습니다.
+- **main 최신 커밋**: `fdfab0b` — PR [one248802/question-lab#2](https://github.com/one248802/question-lab/pull/2) 병합 커밋 (2026-10-02)
+- **작업 방식**: 작업마다 **최신 `main`에서 새 브랜치**를 만들고, PR로 `main`에 병합합니다.
+  ```bash
+  git fetch origin && git checkout -b <새 브랜치> origin/main
+  ```
+- **PR 기록**
+
+  | PR | 내용 | 상태 |
+  | --- | --- | --- |
+  | [one248802/question-lab#1](https://github.com/one248802/question-lab/pull/1) | 초기 구현 (구버전 migration) | GitHub에서는 closed로 보이지만 병합 커밋 `08a28ca`가 main에 있음 |
+  | [one248802/question-lab#2](https://github.com/one248802/question-lab/pull/2) | 최신 스키마(투표 설정·분류 체계), 실제 Supabase 검증, 테스트 도구 | ✅ 병합 (`fdfab0b`) |
+
+- **PR #2에 들어간 주요 커밋**
 
   | SHA | 내용 |
   | --- | --- |
-  | (이 문서 갱신 커밋) | 브라우저 E2E 스크립트 `scripts/e2e-browser.mjs`, playwright-core devDependency, 상태 문서 갱신 |
+  | `3c82fe6` | 브라우저 E2E 스크립트 `scripts/e2e-browser.mjs`, playwright-core devDependency, 실제 검증 결과 기록 |
   | `24d0439` | 개발 초기화 SQL `supabase/dev/reset_app_schema.sql` |
   | `ef80a85` | 실제 Supabase API 검증 스크립트 `scripts/e2e-supabase.mjs` |
-  | `b9ddc33` | PROJECT_STATUS.md 최초 작성 |
   | `e4c9cae` | voting_open → voting_status(before/open/closed), 상태 전환 트리거, DB 테스트 스크립트 |
   | `862a062` | 학급별 투표 설정 + toggle_vote 규칙 |
   | `a4831f8` | 질문은 content만, 분류 체계 조회 테이블, 함수 권한 보안 수정 |
   | `f90dbc4` | `VITE_SUPABASE_PUBLISHABLE_KEY` 환경 변수 이름 지원 |
 
-- **main과의 관계**: main(`08a28ca`, PR #1 병합 커밋)에서 갈라졌고, main보다 **앞서 있기만 하고 뒤처진 커밋은 없습니다** (정확한 개수는 `git rev-list --left-right --count origin/main...HEAD`). 충돌 없이 fast-forward 가능한 상태입니다.
-- ⚠️ **main 브랜치에는 아직 구버전 migration(`question_scopes` 포함)이 있습니다.** SQL을 복사할 때는 반드시 이 브랜치에서 복사하세요. (2026-10-02에 main 버전을 실수로 실행해 초기화한 적이 있음)
-- **PR 상태**: 이 브랜치로는 **아직 PR을 만들지 않았습니다**. 초기 구현 PR([one248802/question-lab#1](https://github.com/one248802/question-lab/pull/1))은 GitHub에서 closed 상태이고, main에는 그 병합 커밋 `08a28ca`가 들어가 있습니다.
+- **정리할 원격 브랜치**: `claude/admiring-edison-vllnk4`(PR #2 head, 병합 완료)와 `claude/epic-lamport-evuclk`(PR #1 head)는 내용이 모두 main에 있으므로 지워도 됩니다. Claude 클라우드 환경의 git 프록시는 원격 브랜치 삭제를 막으므로 GitHub에서 지우세요.
 
 ## 4. 구현 완료된 기능
 
@@ -138,7 +147,7 @@
 | 프로젝트 | 생성 완료. URL `https://ogmsfyuhtrljcubuhclq.supabase.co` |
 | Claude 환경 변수 | 설정 완료: `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`. 코드는 `VITE_SUPABASE_ANON_KEY`도 읽음 |
 | 네트워크 | `*.supabase.co` 허용 완료. Auth API 200 응답 확인 |
-| **migration** | ✅ **적용 완료 (2026-10-02)**. 이 브랜치의 `20261001000000_init.sql`을 SQL Editor에서 실행. 그 전에 main의 구버전 migration이 실행되어 있어서 `supabase/dev/reset_app_schema.sql`로 앱 객체만 정리한 뒤 다시 적용 |
+| **migration** | ✅ **적용 완료 (2026-10-02)**. 현재 main의 `20261001000000_init.sql`을 SQL Editor에서 실행. 그 전에 PR #1 시절 구버전 migration이 실행되어 있어서 `supabase/dev/reset_app_schema.sql`로 앱 객체만 정리한 뒤 다시 적용 |
 | Anonymous Sign-ins | ✅ 켜져 있음. 실제 익명 로그인으로 학생 입장 확인 |
 | Confirm email | 꺼져 있음 (`mailer_autoconfirm: true`, 가입하면 바로 로그인). 운영 전 결정 필요 |
 | Site URL | 확인하지 않음. 배포 후 Authentication → URL Configuration에서 설정 |
@@ -149,11 +158,12 @@
 
 ## 7. 다음에 할 작업 (순서대로)
 
-1. **main으로 PR 생성** (사용자 확인 후). main에 아직 구버전 migration이 남아 있어 혼동 위험이 있으므로 우선순위가 높습니다.
-2. 운영 전 Supabase 설정 결정: Confirm email 켤지, Site URL(배포 주소), 테스트 계정 정리
-3. 배포 (vercel.json 있음) 후 배포 주소에서 `BASE_URL=<배포 주소> node scripts/e2e-browser.mjs` 로 한 번 더 확인
-4. 작은 미해결 항목 중 필요한 것 선택 (9번: 질문 삭제 버튼, 투표 초기화 등). 스키마가 바뀌면 **새 migration 파일**로
-5. 2차 기능 착수 (8번). 첫 후보는 질문 분류 활동 (migration 9번 섹션의 설계 메모 참고, 새 migration 파일로 테이블 추가)
+모든 작업은 최신 `main`에서 새 브랜치를 만들어 시작하고, DB 변경은 **새 migration 파일**로 합니다.
+
+1. 운영 전 Supabase 설정 결정: Confirm email 켤지, Site URL(배포 주소), 테스트 계정 정리
+2. 배포 (vercel.json 있음, 배포 환경 변수 `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` 필요) 후 배포 주소에서 `BASE_URL=<배포 주소> node scripts/e2e-browser.mjs` 로 한 번 더 확인
+3. 작은 미해결 항목 중 필요한 것 선택 (9번: 질문 삭제 버튼, 투표 초기화 등)
+4. 2차 기능 착수 (8번). 첫 후보는 질문 분류 활동 (init migration 9번 섹션의 설계 메모 참고, 새 migration 파일로 테이블 추가)
 
 ## 8. 아직 구현하지 않은 2차 기능
 
@@ -183,7 +193,7 @@
 9. 빌드 번들이 500kB를 넘는다는 경고가 있습니다(코드 분할 미적용). lint 경고 10개는 그대로입니다.
 10. Confirm email(현재 꺼짐)과 Site URL은 운영 전에 정해야 합니다.
 11. `.env` 파일은 저장소에 없습니다. 로컬에서 실행하려면 `.env.example`을 복사해 값을 넣어야 합니다. Claude 클라우드 환경에는 환경 변수로 설정되어 있습니다.
-12. GitHub에서 PR #1은 "closed"로 보이지만 main에는 병합 커밋이 있습니다. 새 PR은 이 브랜치에서 main으로 만들면 됩니다.
+12. GitHub에서 PR #1은 "closed"로 보이지만 main에는 병합 커밋이 있습니다. 이후 PR은 모두 최신 main에서 만든 새 브랜치 → main 입니다.
 13. 학생 화면에서 투표 버튼을 빠르게 두 번 누르면 두 번째 클릭은 무시됩니다(처리 중 중복 방지). 버튼이 처리 중임을 따로 표시하지는 않습니다.
 14. 테스트 스크립트를 돌릴 때마다 실제 Supabase Auth에 테스트 교사 계정 1개와 익명 사용자 2~3개가 쌓입니다.
 
@@ -213,8 +223,8 @@
 
 ```text
 "우리반 질문 상자"(저장소 one248802/question-lab) 작업을 이어서 합니다.
-작업 브랜치는 claude/admiring-edison-vllnk4 입니다. 먼저 이 브랜치를 체크아웃하고
-PROJECT_STATUS.md 를 끝까지 읽어서 현재 상태를 파악해 주세요.
+기준 브랜치는 main 입니다. 최신 main 을 받아 PROJECT_STATUS.md 를 끝까지 읽어서 현재 상태를 파악해 주세요.
+작업을 시작할 때는 최신 main 에서 새 브랜치를 만들어 주세요.
 
 현재 상태 요약:
 - React + TypeScript + Vite + Tailwind v4 + Supabase 앱. 교사(이메일 로그인), 학생(익명 로그인 + 클래스 코드/번호/이름)
@@ -222,7 +232,7 @@ PROJECT_STATUS.md 를 끝까지 읽어서 현재 상태를 파악해 주세요.
 - 학급별 투표 설정: voting_status(before/open/closed, 전환은 DB 트리거로 강제), max_votes, allow_self_vote,
   allow_vote_change, show_results_during_voting, show_results_after_voting. 규칙은 toggle_vote RPC 에서 검사
 - 질문 분류 체계 조회 테이블(classification_frameworks/categories)만 있고, 분류 활동 테이블은 init migration 9번에 설계 주석만 있음
-- 실제 Supabase(https://ogmsfyuhtrljcubuhclq.supabase.co)에 init migration 적용 완료 (2026-10-02)
+- 실제 Supabase(https://ogmsfyuhtrljcubuhclq.supabase.co)에 init migration 적용 완료, PR #2 로 main 병합 완료 (2026-10-02)
 - 검증: ./scripts/test-db.sh 50/50, scripts/e2e-supabase.mjs 58/58, scripts/e2e-browser.mjs 34/34,
   npm run build 통과, lint 경고 10개는 기존 것
 
@@ -230,9 +240,9 @@ PROJECT_STATUS.md 를 끝까지 읽어서 현재 상태를 파악해 주세요.
 - supabase/migrations/20261001000000_init.sql 은 실제 DB 에 적용되었으므로 수정하지 말고, 스키마 변경은 새 migration 파일로 작성
 - 이미 구현된 기능을 다시 만들거나 대규모로 재작성하지 않기
 - 실제 Supabase 에 SQL 적용이 필요하면 제가 SQL Editor 에서 실행하므로, 실행할 SQL 과 확인 방법을 먼저 보여 주기
-- main 브랜치에는 아직 구버전 migration 이 있으니 SQL 은 항상 이 브랜치 기준으로 안내
+- 작업은 최신 main 에서 새 브랜치를 만들어 하고, PR 로 main 에 병합
 
 먼저 할 일:
-1. git 상태(브랜치, 최신 커밋, main 과의 차이)와 ./scripts/test-db.sh, npm run build 결과를 확인해 주세요.
+1. 최신 main 의 커밋과 ./scripts/test-db.sh, npm run build 결과를 확인해 주세요.
 2. PROJECT_STATUS.md 7번 "다음에 할 작업"을 보고 무엇부터 할지 제안해 주세요. 제가 정한 뒤 진행합니다.
 ```
