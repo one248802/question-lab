@@ -5,11 +5,14 @@ import {
   DragOverlay,
   MouseSensor,
   TouchSensor,
+  pointerWithin,
+  rectIntersection,
   useDraggable,
   useDroppable,
   useSensor,
   useSensors,
   type Announcements,
+  type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core'
@@ -58,6 +61,12 @@ function mergePlacement(saved: Placement, activity: ActivityForStudent): Placeme
 // drag & drop 에서 영역을 구분하는 id. 미분류 칸은 'tray'
 const zoneId = (area: number | null) => (area === null ? 'tray' : `area-${area}`)
 const areaOfZone = (id: string): number | null => (id === 'tray' ? null : Number(id.slice('area-'.length)))
+
+// 놓을 영역: 손가락/마우스가 가리키는 영역을 먼저, 영역 밖이면 카드와 가장 많이 겹치는 영역
+const collisionDetection: CollisionDetection = (args) => {
+  const hits = pointerWithin(args)
+  return hits.length > 0 ? hits : rectIntersection(args)
+}
 
 // 화면 읽기 프로그램 안내 (키보드 끌기는 쓰지 않고, 카드 선택 → 「여기에 놓기」 버튼으로 옮김)
 const SCREEN_READER_INSTRUCTIONS = {
@@ -271,6 +280,7 @@ export default function StudentActivity() {
             ) : (
               <DndContext
                 sensors={sensors}
+                collisionDetection={collisionDetection}
                 accessibility={{ screenReaderInstructions: SCREEN_READER_INSTRUCTIONS, announcements: ANNOUNCEMENTS }}
                 onDragStart={onDragStart}
                 onDragEnd={onDragEnd}
@@ -300,7 +310,8 @@ export default function StudentActivity() {
                     </Zone>
                   ))}
                 </div>
-                <DragOverlay>
+                {/* 놓는 애니메이션 없이 바로 내려놓음 (애니메이션 중에는 다음 끌기가 시작되지 않음) */}
+                <DragOverlay dropAnimation={null}>
                   {draggingQuestion && (
                     <div className="rotate-2 rounded-2xl border-2 border-[#e8c34f] bg-butter px-4 py-3 text-lg leading-relaxed font-medium break-words shadow-pop-lg">
                       {draggingQuestion.content}

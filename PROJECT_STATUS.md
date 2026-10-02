@@ -111,9 +111,11 @@
   - 학생은 테이블에 직접 접근하지 않고 읽기 전용 RPC만 씁니다: `list_open_classification_activities()`, `get_classification_activity(id)` — 우리 반에 공개된 활동만, **질문은 id와 내용만**(작성자·투표 정보 없음), 숨긴 질문은 제외
 - 질문이 삭제되면 활동에서도 빠지고(cascade), 학급을 지우면 활동도 지워집니다. 질문·투표 테이블과 기존 RPC, 통계는 바뀌지 않았습니다.
 - **PR B (작업 중, 브랜치 `claude/classification-activity-b`, DB/migration 변경 없음)**
-  - ✅ drag & drop (`@dnd-kit/core`): 카드를 끌어 영역에 놓기. 마우스는 6px 움직이면, 터치는 0.2초 길게 누르면 끌기 시작(짧게 누르면 기존 tap-to-move 선택, 밀면 스크롤). tap-to-move 는 그대로 fallback 으로 유지하고 둘 다 같은 `moveCard` → 같은 placement / sessionStorage 사용. 화면 읽기 안내는 한국어로 「카드 선택 → 여기에 놓기」 방법을 안내(키보드 끌기는 쓰지 않음)
+  - ✅ drag & drop (`@dnd-kit/core`): 카드를 끌어 영역에 놓기. 마우스는 6px 움직이면, 터치는 0.2초 길게 누르면 끌기 시작(짧게 누르면 기존 tap-to-move 선택, 길게 누르지 않고 밀면 끌리지 않음). 놓을 영역은 손가락/마우스가 가리키는 영역 우선(`pointerWithin`, 영역 밖이면 겹침 기준). 놓는 애니메이션은 끔(애니메이션 중에는 다음 끌기가 시작되지 않던 문제 수정). tap-to-move 는 그대로 fallback 으로 유지하고 둘 다 같은 `moveCard` → 같은 placement / sessionStorage 사용. 화면 읽기 안내는 한국어로 「카드 선택 → 여기에 놓기」 방법을 안내(키보드 끌기는 쓰지 않음)
   - ✅ 분류 결과 PNG 저장 (`src/lib/classificationPng.ts`): 화면 캡처가 아니라 Canvas 2D 로 직접 그림 — 활동 제목, 학급명, 학생 번호·이름, 날짜, 영역별 질문, 미분류 질문. 너비 1600px × 2배(휴대폰 캔버스 한도 1,600만 픽셀 안으로 자동 축소). 웹 글꼴(Jua, Noto Sans KR)을 필요한 글자만큼 미리 불러옴. 저장은 학생 기기에만: 컴퓨터는 파일 다운로드, 터치 기기에서 파일 공유를 지원하면 공유 화면(사진에 저장 등), 실패하면 다운로드. Supabase Storage·서버 업로드 없음. 파일 이름 `질문분류_제목_3번_이름_2026-10-02.png`
-  - ⏳ 브라우저 테스트(마우스 끌기, 터치 길게 눌러 끌기, PNG 다운로드 검증)
+  - ✅ 브라우저 테스트 72/72 (기존 60 + 12): 마우스 끌기(미분류→영역, 영역→영역, 영역→미분류), 끌기 뒤 tap-to-move, 끌어서 옮긴 배치의 새로고침 유지, PNG 다운로드(파일 이름·PNG 형식·너비 3200px), PNG 저장 중 Supabase 요청 없음, 휴대폰(터치) 길게 눌러 끌기·짧게 눌러 선택·「여기에 놓기」, 휴대폰 폭 가로 스크롤 없음
+  - 참고: dnd-kit 은 끌기가 끝난 뒤 0.05초 동안 클릭을 막음(놓을 때 생기는 클릭 방지). 테스트는 끌기 뒤 0.1초 쉼. 테스트 브라우저는 `LANG=C.UTF-8` 로 실행(로캘이 없으면 한글 다운로드 파일 이름이 `download` 로 바뀜 — 실제 학생 브라우저와는 무관)
+  - 확인하지 못한 것: 실제 휴대폰/태블릿 기기에서의 공유 화면(사진에 저장), 터치로 밀었을 때 페이지 스크롤(에뮬레이션에서는 확인 불가)
 - 기존 조회 테이블 `classification_frameworks`, `classification_categories`(열린/닫힌, 확인/명료화/심화, 사실적/개념적/논쟁적/호기심 촉발 seed)는 **그대로 두고 쓰지 않습니다**. init migration 9번 섹션의 설계 메모(framework_code, classification_responses)는 이 설계로 대체되었습니다.
 
 ### 보안 설계 요약
@@ -140,7 +142,7 @@
 | 항목 | 결과 |
 | --- | --- |
 | `NODE_USE_ENV_PROXY=1 node scripts/e2e-supabase.mjs` | ✅ **87/87 통과** (질문 삭제·투표 초기화 12개, 질문 분류 활동 17개 포함). supabase-js(앱과 같은 라이브러리)로 실제 프로젝트에 요청 |
-| `node scripts/e2e-browser.mjs` (dev 서버 실행 중) | ✅ **60/60 통과** (질문 삭제·투표 초기화 10개, 질문 분류 활동 16개 포함, 확인창 취소/확인 모두). 실제 Chromium으로 교사·학생 A·학생 B를 각각 다른 브라우저 세션으로 조작 |
+| `node scripts/e2e-browser.mjs` (dev 서버 실행 중) | ✅ **72/72 통과** (질문 삭제·투표 초기화 10개, 질문 분류 활동 16개, drag & drop·터치·PNG 12개 포함, 확인창 취소/확인 모두). 실제 Chromium으로 교사·학생 A·학생 B를 각각 다른 브라우저 세션으로 조작 |
 
 - 검증한 흐름: 교사 회원가입·로그아웃·로그인 → profiles 자동 생성 → 학급 생성·클래스 코드 → 학생 익명 로그인·입장(틀린 코드, 이름 불일치 거부) → 질문 등록(내용만, 3초 제한, 빈 질문 거부) → 익명성(학생 화면·학생이 받은 응답에 작성자 없음, 학생의 테이블 직접 조회/추가 불가, 내부 함수 호출 불가) → 교사만 작성자 확인 → before/open/closed 규칙과 잘못된 전환 거부 → max_votes(줄여도 기존 표 유지, 초과분 취소) → 자기 질문 투표 → 투표 바꾸기 → 투표 중/종료 후 결과 공개 → 다시 열기 → 질문 숨기기 → 모바일 폭(390px) 가로 스크롤 없음
 - **앱 버그는 발견되지 않았습니다.** 고친 것은 테스트 스크립트(선택자, 투표 응답 대기)와 테스트 환경(아래)뿐입니다.
@@ -175,7 +177,7 @@
 
 모든 작업은 최신 `main`에서 새 브랜치를 만들어 시작하고, DB 변경은 **새 migration 파일**로 합니다.
 
-1. 질문 분류 활동 PR B 마무리 (브랜치 `claude/classification-activity-b`): PNG 저장 → 브라우저 테스트 → PR
+1. 질문 분류 활동 PR B: 구현·테스트 완료 (브랜치 `claude/classification-activity-b`) → PR 생성·병합. 가능하면 실제 휴대폰/태블릿에서 끌기와 PNG 저장(공유 화면) 직접 확인
 2. 운영 전 Supabase 설정 결정: Confirm email 켤지, Site URL(배포 주소), 테스트 계정 정리
 3. 배포 (vercel.json 있음, 배포 환경 변수 `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` 필요) 후 배포 주소에서 `BASE_URL=<배포 주소> node scripts/e2e-browser.mjs` 로 한 번 더 확인
 4. 작은 미해결 항목 중 필요한 것 선택 (9번)
@@ -231,7 +233,8 @@
 | `src/lib/types.ts` | `ClassRoom`, `StudentContext`, `VotingStatus` 등 타입 |
 | `src/lib/errors.ts` | RPC 오류 코드 → 한국어 메시지 |
 | `src/pages/student/StudentJoin.tsx`, `StudentBoard.tsx` | 학생 입장, 질문 쓰기 + 게시판 + 투표 |
-| `src/pages/student/StudentActivity.tsx`, `src/components/OpenActivities.tsx` | 학생 분류 화면(tap-to-move, sessionStorage), 게시판의 공개 활동 목록 카드 |
+| `src/pages/student/StudentActivity.tsx`, `src/components/OpenActivities.tsx` | 학생 분류 화면(drag & drop + tap-to-move, sessionStorage, PNG 저장 버튼), 게시판의 공개 활동 목록 카드 |
+| `src/lib/classificationPng.ts` | 분류 결과 PNG 그리기(Canvas 2D)와 학생 기기 저장(다운로드/공유) |
 | `src/pages/teacher/ActivitiesPage.tsx` | 교사 질문 분류 활동 만들기/수정/삭제/공개 |
 | `src/pages/teacher/*` | 교사 로그인, 대시보드, 학급, 질문, 학생, 설정(투표 설정) |
 | `README.md` | 실행 방법, Supabase 설정, 보안 설계, DB 테스트 방법 |
@@ -255,7 +258,7 @@
 - 질문 분류 활동: 교사가 제목·영역 2~5개·질문을 골라 공개, 학생은 카드를 영역에 배치(결과는 DB 저장 안 함, sessionStorage)
   기존 classification_frameworks/categories 테이블은 그대로 두고 쓰지 않음
 - 실제 Supabase(https://ogmsfyuhtrljcubuhclq.supabase.co)에 init migration 적용 완료, PR #2 로 main 병합 완료 (2026-10-02)
-- 검증: ./scripts/test-db.sh 121/121, scripts/e2e-supabase.mjs 87/87, scripts/e2e-browser.mjs 60/60,
+- 검증: ./scripts/test-db.sh 121/121, scripts/e2e-supabase.mjs 87/87, scripts/e2e-browser.mjs 72/72,
   npm run build 통과, lint 경고 10개는 기존 것
 
 규칙:
