@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Heart, Play, Settings, Square, UserRound } from 'lucide-react'
+import { Heart, Play, RotateCcw, Settings, Square, UserRound } from 'lucide-react'
 import { NoClassYet } from '../../components/ClassPicker'
 import { Button, Card, ChoiceChips, ErrorBox, Input, Label, PageTitle, Spinner, Toggle } from '../../components/ui'
 import { useTeacher } from '../../contexts/TeacherContext'
@@ -32,6 +32,7 @@ const VOTING_STEPS: Record<VotingStatus, { text: string; next: VotingStatus; act
 export default function SettingsPage() {
   const { classes, loading, reload, profile, reloadProfile } = useTeacher()
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
 
   const [displayName, setDisplayName] = useState('')
@@ -45,9 +46,25 @@ export default function SettingsPage() {
   const updateClass = async (c: ClassRoom, patch: VoteSettingsPatch) => {
     setBusyId(c.id)
     setError(null)
+    setNotice(null)
     const { error: err } = await supabase.from('classes').update(patch).eq('id', c.id)
     if (err) setError(toMessage(err))
     await reload()
+    setBusyId(null)
+  }
+
+  // 투표 초기화: 이 학급의 표만 지우고 질문과 투표 설정은 그대로 둡니다. 권한은 서버(RPC)에서 확인합니다.
+  const resetVotes = async (c: ClassRoom) => {
+    const ok = window.confirm(
+      `「${c.name}」의 투표를 모두 초기화할까요?\n\n학생들이 한 표가 모두 지워지고 되돌릴 수 없어요.\n질문과 투표 설정(투표 상태, 투표 개수, 공개 설정 등)은 그대로 유지돼요.`,
+    )
+    if (!ok) return
+    setBusyId(c.id)
+    setError(null)
+    setNotice(null)
+    const { data, error: err } = await supabase.rpc('reset_class_votes', { p_class_id: c.id })
+    if (err) setError(toMessage(err))
+    else setNotice(`「${c.name}」의 투표 ${data ?? 0}표를 초기화했어요.`)
     setBusyId(null)
   }
 
@@ -73,6 +90,11 @@ export default function SettingsPage() {
       <PageTitle icon={<Settings className="size-9 text-peach-ink" />} title="설정" />
       <div className="flex flex-col gap-6">
         <ErrorBox message={error} />
+        {notice && (
+          <p role="status" className="rounded-2xl border-2 border-[#6fc9a4] bg-mint-soft px-4 py-3 text-lg font-bold text-mint-ink">
+            {notice}
+          </p>
+        )}
 
         <Card>
           <h2 className="mb-1 flex items-center gap-2 font-display text-2xl">
@@ -85,7 +107,13 @@ export default function SettingsPage() {
           ) : (
             <ul className="flex flex-col divide-y-2 divide-line">
               {classes.map((c) => (
-                <ClassVoteSettings key={`${c.id}:${c.max_votes}`} c={c} busy={busyId === c.id} onChange={(patch) => updateClass(c, patch)} />
+                <ClassVoteSettings
+                  key={`${c.id}:${c.max_votes}`}
+                  c={c}
+                  busy={busyId === c.id}
+                  onChange={(patch) => updateClass(c, patch)}
+                  onReset={() => resetVotes(c)}
+                />
               ))}
             </ul>
           )}
@@ -115,10 +143,12 @@ function ClassVoteSettings({
   c,
   busy,
   onChange,
+  onReset,
 }: {
   c: ClassRoom
   busy: boolean
   onChange: (patch: VoteSettingsPatch) => Promise<void>
+  onReset: () => Promise<void>
 }) {
   const step = VOTING_STEPS[c.voting_status]
   const isPreset = MAX_VOTES_PRESETS.includes(c.max_votes)
@@ -203,6 +233,14 @@ function ClassVoteSettings({
           </li>
         ))}
       </ul>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border-2 border-dashed border-line px-4 py-3">
+        <p className="text-sm text-ink-soft">학생들이 한 표를 모두 지워요. 질문과 위 설정은 그대로예요.</p>
+        <Button size="sm" variant="danger" disabled={busy} onClick={onReset}>
+          <RotateCcw className="size-4" aria-hidden />
+          투표 초기화
+        </Button>
+      </div>
     </li>
   )
 }

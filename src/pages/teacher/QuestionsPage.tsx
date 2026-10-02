@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Clock, Eye, EyeOff, Heart, Inbox, MessageCircleQuestion, RefreshCw, UserRound } from 'lucide-react'
+import { Clock, Eye, EyeOff, Heart, Inbox, MessageCircleQuestion, RefreshCw, Trash2, UserRound } from 'lucide-react'
 import { ClassPicker, NoClassYet } from '../../components/ClassPicker'
 import { Badge, Button, ChoiceChips, EmptyState, ErrorBox, PageTitle, Spinner, cx } from '../../components/ui'
 import { useTeacher } from '../../contexts/TeacherContext'
@@ -70,6 +70,22 @@ export default function QuestionsPage() {
     await load()
   }
 
+  // 삭제: 질문과 그 질문에 받은 표가 함께 지워집니다 (votes 는 on delete cascade).
+  // 학생 화면에서만 감추려면 숨기기를 씁니다.
+  const remove = async (q: TeacherQuestion) => {
+    const preview = q.content.length > 40 ? `${q.content.slice(0, 40)}…` : q.content
+    const ok = window.confirm(
+      `이 질문을 삭제할까요?\n\n「${preview}」\n\n삭제하면 되돌릴 수 없고, 이 질문에 받은 투표 ${q.vote_count}표도 함께 지워져요.\n학생 화면에서만 감추려면 '숨기기'를 눌러 주세요.`,
+    )
+    if (!ok) return
+    setError(null)
+    setQuestions((list) => list.filter((x) => x.id !== q.id))
+    const { data, error: err } = await supabase.from('questions').delete().eq('id', q.id).select('id')
+    if (err) setError(toMessage(err))
+    else if (!data?.length) setError('질문을 삭제하지 못했어요. 새로고침 후 다시 시도해 주세요.')
+    await Promise.all([load(), reloadStats()])
+  }
+
   const refresh = async () => {
     setRefreshing(true)
     await Promise.all([load(), reloadStats()])
@@ -131,7 +147,7 @@ export default function QuestionsPage() {
           ) : (
             <ul className="grid gap-4 lg:grid-cols-2">
               {shown.map((q) => (
-                <QuestionItem key={q.id} q={q} onUpdate={update} />
+                <QuestionItem key={q.id} q={q} onUpdate={update} onDelete={remove} />
               ))}
             </ul>
           )}
@@ -144,9 +160,11 @@ export default function QuestionsPage() {
 function QuestionItem({
   q,
   onUpdate,
+  onDelete,
 }: {
   q: TeacherQuestion
   onUpdate: (id: string, patch: Pick<TeacherQuestion, 'is_hidden'>) => Promise<void>
+  onDelete: (q: TeacherQuestion) => Promise<void>
 }) {
   return (
     <li
@@ -180,6 +198,10 @@ function QuestionItem({
         <Button size="sm" variant={q.is_hidden ? 'mint' : 'secondary'} onClick={() => onUpdate(q.id, { is_hidden: !q.is_hidden })}>
           {q.is_hidden ? <Eye className="size-4" aria-hidden /> : <EyeOff className="size-4" aria-hidden />}
           {q.is_hidden ? '다시 공개' : '숨기기'}
+        </Button>
+        <Button size="sm" variant="danger" onClick={() => onDelete(q)} className="sm:ml-auto">
+          <Trash2 className="size-4" aria-hidden />
+          삭제
         </Button>
       </div>
     </li>

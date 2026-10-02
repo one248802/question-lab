@@ -1,5 +1,5 @@
 // 실제 Supabase 를 연결한 앱을 브라우저(Chromium)로 조작해 핵심 흐름을 확인합니다.
-//   교사 가입/로그인 → 학급 생성 → 학생 2명 입장 → 질문 작성 → 익명성 → 투표(before/open/closed)
+//   교사 가입/로그인 → 학급 생성 → 학생 2명 입장 → 질문 작성 → 익명성 → 투표(before/open/closed) → 질문 삭제 → 투표 초기화
 //
 // 실행:
 //   1) npm run dev            (다른 터미널, .env 또는 환경 변수에 Supabase 값 필요)
@@ -34,8 +34,10 @@ const [tCtx, aCtx, bCtx, mCtx] = await Promise.all([ctx(), ctx(), ctx(), browser
 const teacher = await tCtx.newPage()
 const stuA = await aCtx.newPage()
 const stuB = await bCtx.newPage()
+// 확인창(window.confirm) 응답. 기본은 '확인', 취소를 시험할 때만 false 로 바꿈
+let confirmAnswer = true
 for (const p of [teacher, stuA, stuB]) {
-  p.on('dialog', (d) => d.accept())
+  p.on('dialog', (d) => (confirmAnswer ? d.accept() : d.dismiss()))
   p.on('pageerror', (e) => console.log(`     [pageerror] ${e.message}`))
 }
 
@@ -236,6 +238,45 @@ try {
   const overflow = await mobile.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
   check('B33 모바일 폭(390px)에서 가로 스크롤 없음', overflow <= 0, `${overflow}px`)
   await shot(mobile, '08-student-mobile')
+
+  // 11. 질문 삭제 (숨기기와 별개, 확인창) -------------------------------------
+  await teacher.goto(`${BASE}/teacher/questions`)
+  await card(teacher, QB).waitFor({ timeout: 10000 })
+  confirmAnswer = false
+  await card(teacher, QB).getByRole('button', { name: '삭제' }).click()
+  await teacher.waitForTimeout(1000)
+  check('B34 삭제 확인창에서 취소하면 질문 유지', await card(teacher, QB).isVisible())
+  confirmAnswer = true
+  check('B35 숨기기와 삭제 버튼이 따로 있음',
+    (await card(teacher, QB).getByRole('button', { name: '숨기기' }).isVisible()) && (await card(teacher, QB).getByRole('button', { name: '삭제' }).isVisible()))
+  await card(teacher, QB).getByRole('button', { name: '삭제' }).click()
+  await card(teacher, QB).waitFor({ state: 'detached', timeout: 10000 })
+  check('B36 확인하면 교사 화면에서 질문 삭제', (await card(teacher, QA).count()) === 1)
+  await shot(teacher, '09-teacher-questions-deleted')
+  await reload(stuA)
+  check('B37 학생 화면에서도 삭제된 질문 안 보임', (await stuA.getByText(QB).count()) === 0)
+  check('B38 삭제된 질문의 표는 돌려받음 (남은 표 1 / 1)', await stuA.getByText('남은 표 1 / 1').isVisible())
+
+  // 12. 투표 초기화 (확인창, 설정 유지) ----------------------------------------
+  await teacher.goto(`${BASE}/teacher/settings`)
+  await teacher.getByText('투표 중이에요').waitFor()
+  confirmAnswer = false
+  await teacher.getByRole('button', { name: '투표 초기화' }).click()
+  await teacher.waitForTimeout(1000)
+  check('B39 초기화 확인창에서 취소하면 아무 일 없음', (await teacher.getByText(/표를 초기화했어요/).count()) === 0)
+  confirmAnswer = true
+  await teacher.getByRole('button', { name: '투표 초기화' }).click()
+  await teacher.getByText(/투표 \d+표를 초기화했어요/).waitFor({ timeout: 10000 })
+  check('B40 확인하면 초기화 완료 안내', (await teacher.getByText(`「${className}」의 투표 1표를 초기화했어요.`).count()) === 1,
+    await teacher.getByRole('status').innerText())
+  check('B41 투표 설정 유지 (투표 중, 1개, 바꾸기 OFF)',
+    (await teacher.getByText('투표 중이에요').isVisible()) &&
+      (await teacher.getByRole('radio', { name: '1개' }).getAttribute('aria-checked')) === 'true' &&
+      (await teacher.getByRole('switch', { name: `${className} 투표 바꾸기` }).getAttribute('aria-checked')) === 'false')
+  await shot(teacher, '10-teacher-settings-reset')
+  await reload(stuB)
+  check('B42 학생 B: 투표가 지워져 남은 표 1 / 1', await stuB.getByText('남은 표 1 / 1').isVisible())
+  check('B43 학생 B: 질문은 그대로, 투표 표시 해제', (await voteBtn(stuB, QA).getAttribute('aria-pressed')) === 'false')
 } catch (e) {
   failed++
   console.log(`FAIL 중단: ${e.message.split('\n')[0]}`)

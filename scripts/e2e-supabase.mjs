@@ -1,5 +1,5 @@
 // 실제 Supabase 프로젝트에서 핵심 흐름을 확인합니다.
-//   교사 회원가입/로그인 → 학급 생성 → 학생 입장 → 질문 작성 → 익명성 확인 → 투표
+//   교사 회원가입/로그인 → 학급 생성 → 학생 입장 → 질문 작성 → 익명성 확인 → 투표 → 질문 삭제 → 투표 초기화
 //
 // 실행: NODE_USE_ENV_PROXY=1 node scripts/e2e-supabase.mjs [--keep]
 //   - VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY(또는 VITE_SUPABASE_ANON_KEY) 환경 변수가 필요합니다.
@@ -192,6 +192,35 @@ try {
   const hide = await teacher.from('questions').update({ is_hidden: true }).eq('id', qB.data)
   check('52 교사 질문 숨기기', !hide.error, errMsg(hide.error))
   check('53 숨긴 질문은 학생 목록에서 제외', (await stuA.rpc('list_class_questions')).data?.length === 1)
+
+  // 7. 질문 삭제 ------------------------------------------------------------
+  await teacher.from('questions').update({ is_hidden: false }).eq('id', qB.data)
+  const stuDelete = await stuA.from('questions').delete().eq('id', qA.data).select()
+  check('54 학생은 질문 삭제 불가', Boolean(stuDelete.error) || stuDelete.data.length === 0, show(stuDelete.data))
+  ctx = await stuB.rpc('get_my_student')
+  check('55 삭제 전: 학생 B 는 A 질문에 1표', ctx.data?.my_vote_count === 1, show(ctx.data))
+  const del = await teacher.from('questions').delete().eq('id', qA.data).select('id')
+  check('56 교사 질문 삭제', !del.error && del.data?.length === 1, errMsg(del.error))
+  const listB = await stuB.rpc('list_class_questions')
+  check('57 삭제된 질문은 학생 목록에서 사라짐', show((listB.data ?? []).map((q) => q.id)) === show([qB.data]), show(listB.data))
+  ctx = await stuB.rpc('get_my_student')
+  check('58 삭제된 질문의 표도 함께 삭제 (학생 B 표 0)', ctx.data?.my_vote_count === 0, show(ctx.data))
+  r = await vote(stuB, qA.data)
+  check('59 삭제된 질문에는 투표 불가', r.error?.message === 'QUESTION_NOT_FOUND', errMsg(r.error))
+
+  // 8. 투표 초기화 ----------------------------------------------------------
+  const before = (await teacher.from('classes').select('*').eq('id', classId).single()).data
+  r = await stuA.rpc('reset_class_votes', { p_class_id: classId })
+  check('60 학생은 투표 초기화 불가', r.error?.message === 'FORBIDDEN', errMsg(r.error))
+  const tVotes = async () => (await teacher.from('votes').select('id')).data?.length
+  check('61 거부된 초기화 후 표 유지 (A → B 1표)', (await tVotes()) === 1, String(await tVotes()))
+  r = await teacher.rpc('reset_class_votes', { p_class_id: classId })
+  check('62 교사 투표 초기화: 지운 표 수 반환', !r.error && r.data === 1, `${r.data} ${errMsg(r.error)}`)
+  check('63 학급 표 0개', (await tVotes()) === 0, String(await tVotes()))
+  const after = (await teacher.from('classes').select('*').eq('id', classId).single()).data
+  check('64 투표 설정은 그대로', show(before) === show(after), `${show(before)} → ${show(after)}`)
+  ctx = await stuA.rpc('get_my_student')
+  check('65 학생 A 표 0개, 질문은 그대로', ctx.data?.my_vote_count === 0 && (await stuA.rpc('list_class_questions')).data?.length === 1, show(ctx.data))
 } catch (e) {
   failed++
   console.log(`FAIL 중단: ${e.message}`)
