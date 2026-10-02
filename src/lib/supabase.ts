@@ -1,7 +1,9 @@
 import { createClient } from '@supabase/supabase-js'
 
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
+// Supabase 대시보드의 publishable key(구 anon key). 예전 이름도 계속 지원합니다.
+const anonKey = (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+  import.meta.env.VITE_SUPABASE_ANON_KEY) as string | undefined
 
 /** .env 에 Supabase 주소와 anon key 가 들어 있는지 */
 export const isSupabaseConfigured = Boolean(url && anonKey)

@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Clock, Eye, EyeOff, Heart, Inbox, MessageCircleQuestion, Pencil, RefreshCw, UserRound } from 'lucide-react'
+import { Clock, Eye, EyeOff, Heart, Inbox, MessageCircleQuestion, RefreshCw, UserRound } from 'lucide-react'
 import { ClassPicker, NoClassYet } from '../../components/ClassPicker'
-import { QuestionBadges } from '../../components/QuestionBadges'
-import { Badge, Button, ChoiceChips, EmptyState, ErrorBox, PageTitle, Select, Spinner, cx } from '../../components/ui'
+import { Badge, Button, ChoiceChips, EmptyState, ErrorBox, PageTitle, Spinner, cx } from '../../components/ui'
 import { useTeacher } from '../../contexts/TeacherContext'
-import { useCategories, type Categories } from '../../lib/categories'
 import { formatDateTime } from '../../lib/date'
 import { toMessage } from '../../lib/errors'
 import { supabase } from '../../lib/supabase'
@@ -21,13 +19,11 @@ interface Row extends Omit<TeacherQuestion, 'vote_count'> {
 
 export default function QuestionsPage() {
   const { classes, loading: classesLoading, selectedClassId, reload: reloadStats } = useTeacher()
-  const categories = useCategories()
 
   const [questions, setQuestions] = useState<TeacherQuestion[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [filter, setFilter] = useState('all')
   const [visibility, setVisibility] = useState<Visibility>('all')
   const [sort, setSort] = useState<Sort>('new')
 
@@ -36,7 +32,7 @@ export default function QuestionsPage() {
     const { data, error: err } = await supabase
       .from('questions')
       .select(
-        'id, class_id, student_id, content, question_scope, question_type, is_hidden, created_at, student:students(student_number, name), votes(count)',
+        'id, class_id, student_id, content, is_hidden, created_at, student:students(student_number, name), votes(count)',
       )
       .eq('class_id', selectedClassId)
       .order('created_at', { ascending: false })
@@ -59,35 +55,15 @@ export default function QuestionsPage() {
     return () => window.clearInterval(timer)
   }, [load])
 
-  const filterOptions = useMemo(
-    () => [
-      { value: 'all', label: '전체' },
-      ...categories.scopes.map((s) => ({ value: `scope:${s.code}`, label: s.label })),
-      ...categories.types.map((t) => ({ value: `type:${t.code}`, label: t.label })),
-    ],
-    [categories],
-  )
-
-  const counts = useMemo(() => {
-    const map: Record<string, number> = { all: questions.length }
-    for (const q of questions) {
-      map[`scope:${q.question_scope}`] = (map[`scope:${q.question_scope}`] ?? 0) + 1
-      map[`type:${q.question_type}`] = (map[`type:${q.question_type}`] ?? 0) + 1
-    }
-    return map
-  }, [questions])
-
   const shown = useMemo(() => {
     let list = questions
-    if (filter.startsWith('scope:')) list = list.filter((q) => q.question_scope === filter.slice(6))
-    else if (filter.startsWith('type:')) list = list.filter((q) => q.question_type === filter.slice(5))
     if (visibility === 'visible') list = list.filter((q) => !q.is_hidden)
     if (visibility === 'hidden') list = list.filter((q) => q.is_hidden)
     if (sort === 'votes') list = [...list].sort((a, b) => b.vote_count - a.vote_count)
     return list
-  }, [questions, filter, visibility, sort])
+  }, [questions, visibility, sort])
 
-  const update = async (id: string, patch: Partial<Pick<TeacherQuestion, 'is_hidden' | 'question_scope' | 'question_type'>>) => {
+  const update = async (id: string, patch: Pick<TeacherQuestion, 'is_hidden'>) => {
     setQuestions((list) => list.map((q) => (q.id === id ? { ...q, ...patch } : q)))
     const { error: err } = await supabase.from('questions').update(patch).eq('id', id)
     if (err) setError(toMessage(err))
@@ -123,25 +99,6 @@ export default function QuestionsPage() {
         <NoClassYet />
       ) : (
         <div className="flex flex-col gap-5">
-          <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="질문 유형">
-            {filterOptions.map((o) => (
-              <button
-                key={o.value}
-                type="button"
-                role="radio"
-                aria-checked={filter === o.value}
-                onClick={() => setFilter(o.value)}
-                className={cx(
-                  'inline-flex min-h-12 items-center gap-2 rounded-2xl border-2 px-4 text-lg font-bold transition',
-                  filter === o.value ? 'border-[#e8c34f] bg-butter shadow-pop-sm' : 'border-line bg-paper text-ink-soft hover:border-line-strong',
-                )}
-              >
-                {o.label}
-                <span className="rounded-full bg-paper/80 px-2 text-sm">{counts[o.value] ?? 0}</span>
-              </button>
-            ))}
-          </div>
-
           <div className="flex flex-wrap items-center gap-3">
             <ChoiceChips<Visibility>
               size="sm"
@@ -174,7 +131,7 @@ export default function QuestionsPage() {
           ) : (
             <ul className="grid gap-4 lg:grid-cols-2">
               {shown.map((q) => (
-                <QuestionItem key={q.id} q={q} categories={categories} onUpdate={update} />
+                <QuestionItem key={q.id} q={q} onUpdate={update} />
               ))}
             </ul>
           )}
@@ -186,15 +143,11 @@ export default function QuestionsPage() {
 
 function QuestionItem({
   q,
-  categories,
   onUpdate,
 }: {
   q: TeacherQuestion
-  categories: Categories
-  onUpdate: (id: string, patch: Partial<Pick<TeacherQuestion, 'is_hidden' | 'question_scope' | 'question_type'>>) => Promise<void>
+  onUpdate: (id: string, patch: Pick<TeacherQuestion, 'is_hidden'>) => Promise<void>
 }) {
-  const [editing, setEditing] = useState(false)
-
   return (
     <li
       className={cx(
@@ -202,39 +155,7 @@ function QuestionItem({
         q.is_hidden ? 'border-dashed border-line-strong bg-cream opacity-80' : 'border-line bg-paper',
       )}
     >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        {editing ? (
-          <div className="flex flex-wrap gap-2">
-            <Select
-              aria-label="질문의 형태"
-              value={q.question_scope}
-              onChange={(e) => onUpdate(q.id, { question_scope: e.target.value })}
-              className="min-h-10 w-auto text-base"
-            >
-              {categories.scopes.map((s) => (
-                <option key={s.code} value={s.code}>
-                  {s.label}
-                </option>
-              ))}
-            </Select>
-            <Select
-              aria-label="질문의 역할"
-              value={q.question_type}
-              onChange={(e) => onUpdate(q.id, { question_type: e.target.value })}
-              className="min-h-10 w-auto text-base"
-            >
-              {categories.types.map((t) => (
-                <option key={t.code} value={t.code}>
-                  {t.label}
-                </option>
-              ))}
-            </Select>
-          </div>
-        ) : (
-          <QuestionBadges scope={q.question_scope} type={q.question_type} categories={categories} />
-        )}
-        {q.is_hidden && <Badge className="bg-line text-ink-soft">숨김</Badge>}
-      </div>
+      {q.is_hidden && <Badge className="self-start bg-line text-ink-soft">숨김</Badge>}
 
       <p className={cx('text-xl leading-relaxed font-medium break-words whitespace-pre-wrap', q.is_hidden && 'line-through decoration-ink-soft/40')}>
         {q.content}
@@ -259,10 +180,6 @@ function QuestionItem({
         <Button size="sm" variant={q.is_hidden ? 'mint' : 'secondary'} onClick={() => onUpdate(q.id, { is_hidden: !q.is_hidden })}>
           {q.is_hidden ? <Eye className="size-4" aria-hidden /> : <EyeOff className="size-4" aria-hidden />}
           {q.is_hidden ? '다시 공개' : '숨기기'}
-        </Button>
-        <Button size="sm" variant="ghost" onClick={() => setEditing((v) => !v)}>
-          <Pencil className="size-4" aria-hidden />
-          {editing ? '유형 수정 끝' : '유형 수정'}
         </Button>
       </div>
     </li>

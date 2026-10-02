@@ -23,3 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 .env
+
+# 브라우저 E2E 스크린샷
+e2e-shots/

@@ -11,7 +11,7 @@ export function SetupNotice() {
         </p>
         <pre className="overflow-x-auto rounded-2xl bg-cream p-4 text-sm">
 {`VITE_SUPABASE_URL=https://xxxx.supabase.co
-VITE_SUPABASE_ANON_KEY=anon-public-key`}
+VITE_SUPABASE_PUBLISHABLE_KEY=publishable-or-anon-key`}
         </pre>
       </Card>
     </div>

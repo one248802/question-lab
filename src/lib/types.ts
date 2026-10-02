@@ -1,3 +1,6 @@
+/** 투표 상태: 시작 전 → 투표 중 → 종료 (종료 후 다시 열 수 있음) */
+export type VotingStatus = 'before' | 'open' | 'closed'
+
 export interface Profile {
   id: string
   email: string | null
@@ -11,7 +14,13 @@ export interface ClassRoom {
   name: string
   grade: number | null
   class_code: string
-  show_vote_results: boolean
+  /** 1인당 투표 가능 개수 */
+  max_votes: number
+  allow_self_vote: boolean
+  voting_status: VotingStatus
+  allow_vote_change: boolean
+  show_results_during_voting: boolean
+  show_results_after_voting: boolean
   created_at: string
 }
 
@@ -36,8 +45,6 @@ export interface TeacherQuestion {
   class_id: string
   student_id: string
   content: string
-  question_scope: string
-  question_type: string
   is_hidden: boolean
   created_at: string
   student: { student_number: number; name: string } | null
@@ -48,8 +55,6 @@ export interface TeacherQuestion {
 export interface BoardQuestion {
   id: string
   content: string
-  question_scope: string
-  question_type: string
   created_at: string
   is_mine: boolean
   voted_by_me: boolean
@@ -65,11 +70,12 @@ export interface StudentContext {
   class_id: string
   class_name: string
   grade: number | null
-  show_vote_results: boolean
-}
-
-export interface CategoryOption {
-  code: string
-  label: string
-  sort_order: number
+  max_votes: number
+  allow_self_vote: boolean
+  voting_status: VotingStatus
+  allow_vote_change: boolean
+  /** 지금 학생 화면에 투표 수를 보여 주는지 (투표 중/종료 후 설정을 반영한 값) */
+  show_vote_counts: boolean
+  /** 숨겨지지 않은 질문에 한 내 표 수 */
+  my_vote_count: number
 }

@@ -1,21 +1,16 @@
 import { useState, type FormEvent } from 'react'
 import { Pencil, Send } from 'lucide-react'
-import { Button, Card, ChoiceChips, ErrorBox, Textarea } from './ui'
-import type { Categories } from '../lib/categories'
+import { Button, Card, ErrorBox, Textarea } from './ui'
 
 const MAX = 300
 
 export function QuestionComposer({
-  categories,
   onSubmit,
 }: {
-  categories: Categories
   /** 성공하면 null, 실패하면 오류 문장 */
-  onSubmit: (content: string, scope: string, type: string) => Promise<string | null>
+  onSubmit: (content: string) => Promise<string | null>
 }) {
   const [content, setContent] = useState('')
-  const [scope, setScope] = useState<string | null>(null)
-  const [type, setType] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -23,15 +18,11 @@ export function QuestionComposer({
     e.preventDefault()
     setError(null)
     if (!content.trim()) return setError('질문을 써 주세요.')
-    if (!scope) return setError('열린 질문인지 닫힌 질문인지 골라 주세요.')
-    if (!type) return setError('질문의 역할을 골라 주세요.')
     setSending(true)
-    const result = await onSubmit(content.trim(), scope, type)
+    const result = await onSubmit(content.trim())
     setSending(false)
     if (result) return setError(result)
     setContent('')
-    setScope(null)
-    setType(null)
   }
 
   return (
@@ -53,26 +44,6 @@ export function QuestionComposer({
             {content.length} / {MAX}
           </p>
         </div>
-
-        <fieldset>
-          <legend className="mb-2 text-lg font-bold">질문의 형태</legend>
-          <ChoiceChips
-            options={categories.scopes.map((s) => ({ value: s.code, label: s.label }))}
-            value={scope}
-            onChange={setScope}
-            colorOf={categories.scopeColor}
-          />
-        </fieldset>
-
-        <fieldset>
-          <legend className="mb-2 text-lg font-bold">질문의 역할</legend>
-          <ChoiceChips
-            options={categories.types.map((t) => ({ value: t.code, label: t.label }))}
-            value={type}
-            onChange={setType}
-            colorOf={categories.typeColor}
-          />
-        </fieldset>
 
         <ErrorBox message={error} />
         <Button type="submit" size="lg" loading={sending} className="self-stretch sm:self-end">

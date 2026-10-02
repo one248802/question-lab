@@ -8,30 +8,46 @@
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
--- 1. 질문 유형 (나중에 행을 추가/수정하여 유형을 바꿀 수 있는 조회 테이블)
+-- 1. 질문 분류 체계 (조회 테이블)
+--  학생은 질문을 쓸 때 유형을 고르지 않습니다. 분류는 교사가 만드는 별도의
+--  "질문 분류 활동"에서 학생들이 드래그앤드롭으로 합니다. (아래 9번 참고)
+--  분류 체계/범주는 행을 추가하거나 is_active 를 꺼서 바꿀 수 있습니다.
+--  이미 응답에 쓰인 범주는 지우지 말고 is_active = false 로 숨기세요.
 -- ---------------------------------------------------------------------
-create table public.question_scopes (
-  code        text primary key,
-  label       text not null,
-  sort_order  int  not null default 0,
-  is_active   boolean not null default true
+create table public.classification_frameworks (
+  code         text primary key check (code ~ '^[a-z][a-z0-9_]*$'),
+  label        text not null,
+  description  text,
+  sort_order   int  not null default 0,
+  is_active    boolean not null default true
 );
 
-create table public.question_types (
-  code        text primary key,
-  label       text not null,
-  sort_order  int  not null default 0,
-  is_active   boolean not null default true
+create table public.classification_categories (
+  id              uuid primary key default gen_random_uuid(),
+  framework_code  text not null references public.classification_frameworks (code)
+                    on update cascade on delete restrict,
+  code            text not null check (code ~ '^[a-z][a-z0-9_]*$'),
+  label           text not null,
+  sort_order      int  not null default 0,
+  is_active       boolean not null default true,
+  unique (framework_code, code)
 );
 
-insert into public.question_scopes (code, label, sort_order) values
-  ('open',   '열린 질문', 1),
-  ('closed', '닫힌 질문', 2);
+insert into public.classification_frameworks (code, label, sort_order) values
+  ('open_closed', '열린 질문 / 닫힌 질문',                        1),
+  ('role',        '확인 / 명료화 / 심화 질문',                    2),
+  ('inquiry',     '사실적 / 개념적 / 논쟁적 / 호기심 촉발 질문', 3);
 
-insert into public.question_types (code, label, sort_order) values
-  ('confirm', '확인 질문',   1),
-  ('clarify', '명료화 질문', 2),
-  ('deepen',  '심화 질문',   3);
+insert into public.classification_categories (framework_code, code, label, sort_order) values
+  ('open_closed', 'open',        '열린 질문',      1),
+  ('open_closed', 'closed',      '닫힌 질문',      2),
+  ('role',        'confirm',     '확인 질문',      1),
+  ('role',        'clarify',     '명료화 질문',    2),
+  ('role',        'deepen',      '심화 질문',      3),
+  ('inquiry',     'factual',     '사실적 질문',    1),
+  ('inquiry',     'conceptual',  '개념적 질문',    2),
+  ('inquiry',     'debatable',   '논쟁적 질문',    3),
+  ('inquiry',     'provocative', '호기심 촉발 질문', 4);
 
 -- ---------------------------------------------------------------------
 -- 2. 테이블
@@ -49,7 +65,23 @@ create table public.classes (
   name               text not null check (char_length(btrim(name)) between 1 and 40),
   grade              smallint check (grade is null or grade between 1 and 6),
   class_code         text not null unique check (class_code ~ '^[A-Z0-9]{6}$'),
-  show_vote_results  boolean not null default false,
+
+  -- 투표 설정 (학급별, 교사가 설정 화면에서 바꿈)
+  --  max_votes          : 1인당 투표 가능 개수 (1~20). 줄여도 이미 행사한 표는 지우지 않습니다.
+  --  allow_self_vote    : 자기 질문에 투표 허용
+  --  voting_status      : 'before'(시작 전) → 'open'(투표 중) → 'closed'(종료), closed → open 으로 다시 열기 가능
+  --                       open 일 때만 투표/취소 가능. before 에는 결과를 항상 숨깁니다.
+  --  allow_vote_change  : 투표 중 취소(바꾸기) 허용
+  --  show_results_during_voting / show_results_after_voting
+  --                     : 학생 화면에 투표 수 공개 (open 일 때 / closed 일 때)
+  max_votes                   smallint not null default 3 check (max_votes between 1 and 20),
+  allow_self_vote             boolean  not null default false,
+  voting_status               text     not null default 'before'
+                                check (voting_status in ('before', 'open', 'closed')),
+  allow_vote_change           boolean  not null default true,
+  show_results_during_voting  boolean  not null default false,
+  show_results_after_voting   boolean  not null default true,
+
   created_at         timestamptz not null default now()
 );
 create index classes_teacher_id_idx on public.classes (teacher_id);
@@ -78,8 +110,6 @@ create table public.questions (
   class_id        uuid not null references public.classes (id) on delete cascade,
   student_id      uuid not null references public.students (id) on delete cascade,
   content         text not null check (char_length(btrim(content)) between 1 and 300),
-  question_scope  text not null references public.question_scopes (code) on update cascade,
-  question_type   text not null references public.question_types (code) on update cascade,
   is_hidden       boolean not null default false,
   created_at      timestamptz not null default now()
 );
@@ -132,6 +162,36 @@ as $$
   where ss.auth_user_id = auth.uid();
 $$;
 
+-- 지금 학생에게 투표 수를 보여 줄지
+--  before: 항상 숨김 / open: show_results_during_voting / closed: show_results_after_voting
+create or replace function public.vote_results_visible(
+  p_voting_status text,
+  p_show_during   boolean,
+  p_show_after    boolean
+)
+returns boolean
+language sql immutable
+set search_path = ''
+as $$
+  select case p_voting_status
+    when 'open'   then p_show_during
+    when 'closed' then p_show_after
+    else false
+  end;
+$$;
+
+-- 학생이 현재 쓰고 있는 표 수 (숨겨진 질문에 한 표는 세지 않음)
+create or replace function public.student_vote_count(p_student_id uuid)
+returns int
+language sql stable security definer
+set search_path = ''
+as $$
+  select count(*)::int
+  from public.votes v
+  join public.questions q on q.id = v.question_id
+  where v.student_id = p_student_id and q.is_hidden = false;
+$$;
+
 -- 헷갈리는 글자(0, O, 1, I)를 뺀 6자리 클래스 코드 생성
 create or replace function public.generate_class_code()
 returns text
@@ -157,7 +217,7 @@ $$;
 -- 학급 생성 시 클래스 코드 자동 생성
 create or replace function public.classes_before_insert()
 returns trigger
-language plpgsql
+language plpgsql security definer
 set search_path = ''
 as $$
 begin
@@ -171,7 +231,28 @@ create trigger classes_before_insert
   before insert on public.classes
   for each row execute function public.classes_before_insert();
 
+-- 투표 상태는 before → open → closed 순서로만 바뀝니다. (closed → open 다시 열기 허용)
+create or replace function public.classes_check_voting_status()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if new.voting_status is distinct from old.voting_status
+     and (old.voting_status, new.voting_status) not in
+         (('before', 'open'), ('open', 'closed'), ('closed', 'open')) then
+    raise exception 'INVALID_VOTING_TRANSITION';
+  end if;
+  return new;
+end;
+$$;
+
+create trigger classes_check_voting_status
+  before update of voting_status on public.classes
+  for each row execute function public.classes_check_voting_status();
+
 -- 교사 회원가입 시 profiles 자동 생성 (익명 학생은 제외)
+-- classes.teacher_id 가 profiles 를 참조하므로, 이 행이 없으면 학급을 만들 수 없습니다.
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql security definer
@@ -183,7 +264,8 @@ begin
     values (
       new.id,
       new.email,
-      nullif(btrim(coalesce(new.raw_user_meta_data ->> 'display_name', '')), '')
+      -- display_name 길이 제한(40자) 때문에 회원가입 자체가 실패하지 않도록 자릅니다.
+      left(nullif(btrim(coalesce(new.raw_user_meta_data ->> 'display_name', '')), ''), 40)
     )
     on conflict (id) do nothing;
   end if;
@@ -204,8 +286,8 @@ on conflict (id) do nothing;
 -- ---------------------------------------------------------------------
 -- 4. Row Level Security
 -- ---------------------------------------------------------------------
-alter table public.question_scopes  enable row level security;
-alter table public.question_types   enable row level security;
+alter table public.classification_frameworks  enable row level security;
+alter table public.classification_categories  enable row level security;
 alter table public.profiles         enable row level security;
 alter table public.classes          enable row level security;
 alter table public.students         enable row level security;
@@ -213,10 +295,10 @@ alter table public.student_sessions enable row level security;
 alter table public.questions        enable row level security;
 alter table public.votes            enable row level security;
 
--- 질문 유형: 로그인한 누구나 읽기
-create policy "question_scopes: read" on public.question_scopes
+-- 분류 체계/범주: 로그인한 누구나 읽기
+create policy "classification_frameworks: read" on public.classification_frameworks
   for select to authenticated using (true);
-create policy "question_types: read" on public.question_types
+create policy "classification_categories: read" on public.classification_categories
   for select to authenticated using (true);
 
 -- profiles: 본인 것만
@@ -272,15 +354,18 @@ create policy "votes: teacher read" on public.votes
 revoke all on all tables in schema public from anon;
 revoke all on public.student_sessions from authenticated;
 revoke insert, update on public.classes from authenticated;
-grant insert (name, grade, show_vote_results) on public.classes to authenticated;
-grant update (name, grade, show_vote_results) on public.classes to authenticated;
+-- voting_status 는 insert 할 수 없으므로 새 학급은 항상 'before' 로 시작합니다.
+grant insert (name, grade, max_votes, allow_self_vote, allow_vote_change,
+               show_results_during_voting, show_results_after_voting) on public.classes to authenticated;
+grant update (name, grade, max_votes, allow_self_vote, voting_status, allow_vote_change,
+               show_results_during_voting, show_results_after_voting) on public.classes to authenticated;
 revoke insert, update on public.questions from authenticated;
-grant update (is_hidden, question_scope, question_type) on public.questions to authenticated;
+grant update (is_hidden) on public.questions to authenticated;
 revoke insert, update, delete on public.votes from authenticated;
 revoke insert, delete on public.profiles from authenticated;
 revoke update on public.profiles from authenticated;
 grant update (display_name) on public.profiles to authenticated;
-revoke insert, update, delete on public.question_scopes, public.question_types from authenticated;
+revoke insert, update, delete on public.classification_frameworks, public.classification_categories from authenticated;
 
 -- ---------------------------------------------------------------------
 -- 6. 교사용 RPC
@@ -342,7 +427,13 @@ as $$
     'class_id',          c.id,
     'class_name',        c.name,
     'grade',             c.grade,
-    'show_vote_results', c.show_vote_results
+    'max_votes',         c.max_votes,
+    'allow_self_vote',   c.allow_self_vote,
+    'voting_status',     c.voting_status,
+    'allow_vote_change', c.allow_vote_change,
+    'show_vote_counts',  public.vote_results_visible(
+                           c.voting_status, c.show_results_during_voting, c.show_results_after_voting),
+    'my_vote_count',     public.student_vote_count(s.id)
   )
   from public.students s
   join public.classes c on c.id = s.class_id
@@ -419,13 +510,13 @@ as $$
   delete from public.student_sessions where auth_user_id = auth.uid();
 $$;
 
--- 우리 반 질문 목록 (작성자 정보 없음, 투표 수는 공개 설정일 때만)
+-- 우리 반 질문 목록 (작성자 정보 없음)
+-- vote_count: before 이면 항상 null, open 이면 show_results_during_voting,
+--             closed 이면 show_results_after_voting 이 true 일 때만 반환
 create or replace function public.list_class_questions()
 returns table (
   id uuid,
   content text,
-  question_scope text,
-  question_type text,
   created_at timestamptz,
   is_mine boolean,
   voted_by_me boolean,
@@ -450,12 +541,11 @@ begin
   select
     q.id,
     q.content,
-    q.question_scope,
-    q.question_type,
     q.created_at,
     q.student_id = v_student_id,
     exists (select 1 from public.votes v where v.question_id = q.id and v.student_id = v_student_id),
-    case when v_class.show_vote_results
+    case when public.vote_results_visible(
+           v_class.voting_status, v_class.show_results_during_voting, v_class.show_results_after_voting)
       then (select count(*)::int from public.votes v where v.question_id = q.id)
       else null end
   from public.questions q
@@ -465,11 +555,7 @@ end;
 $$;
 
 -- 질문 작성
-create or replace function public.create_question(
-  p_content text,
-  p_scope text,
-  p_type text
-)
+create or replace function public.create_question(p_content text)
 returns uuid
 language plpgsql security definer
 set search_path = ''
@@ -486,10 +572,6 @@ begin
   if char_length(v_content) < 1 or char_length(v_content) > 300 then
     raise exception 'INVALID_CONTENT';
   end if;
-  if not exists (select 1 from public.question_scopes where code = p_scope and is_active)
-     or not exists (select 1 from public.question_types where code = p_type and is_active) then
-    raise exception 'INVALID_TYPE';
-  end if;
   -- 너무 빠른 연속 작성 방지 (3초)
   if exists (
     select 1 from public.questions
@@ -498,49 +580,91 @@ begin
     raise exception 'TOO_FAST';
   end if;
 
-  insert into public.questions (class_id, student_id, content, question_scope, question_type)
-  values (v_student.class_id, v_student.id, v_content, p_scope, p_type)
+  insert into public.questions (class_id, student_id, content)
+  values (v_student.class_id, v_student.id, v_content)
   returning id into v_id;
   return v_id;
 end;
 $$;
 
 -- 투표 / 투표 취소 (토글). 반환값: 투표한 상태면 true
+--  규칙
+--  - voting_status = 'before'    : 새 투표, 취소 모두 불가 (VOTING_NOT_STARTED)
+--  - voting_status = 'closed'    : 새 투표, 취소 모두 불가 (VOTING_CLOSED)
+--  - 새 투표                    : 내 표 수 >= max_votes 이면 불가 (VOTE_LIMIT_REACHED)
+--                                 allow_self_vote = false 이고 내 질문이면 불가 (SELF_VOTE_NOT_ALLOWED)
+--  - 취소                       : allow_vote_change = true 이면 가능.
+--                                 false 여도 max_votes 를 넘게 갖고 있으면(교사가 개수를 줄인 경우)
+--                                 max_votes 까지 줄이는 취소는 허용합니다. (VOTE_CHANGE_NOT_ALLOWED)
+--  - max_votes 를 줄여도 기존 표는 지우지 않습니다.
+--  - 내 표 수는 숨겨진 질문의 표를 빼고 셉니다. (숨겨진 질문의 표는 취소할 수 없으므로)
 create or replace function public.toggle_vote(p_question_id uuid)
 returns boolean
 language plpgsql security definer
 set search_path = ''
 as $$
 declare
-  v_student public.students%rowtype;
+  v_student   public.students%rowtype;
+  v_class     public.classes%rowtype;
+  v_question  public.questions%rowtype;
+  v_my_votes  int;
 begin
-  select s.* into v_student from public.students s where s.id = public.current_student_id();
+  -- 학생 행을 잠가서 같은 학생이 여러 기기에서 동시에 투표해도 개수 제한을 넘지 않게 합니다.
+  select s.* into v_student from public.students s
+  where s.id = public.current_student_id()
+  for update;
   if not found then
     raise exception 'NOT_JOINED';
   end if;
-  if not exists (
-    select 1 from public.questions q
-    where q.id = p_question_id and q.class_id = v_student.class_id and q.is_hidden = false
-  ) then
+
+  select c.* into v_class from public.classes c where c.id = v_student.class_id;
+
+  select q.* into v_question from public.questions q
+  where q.id = p_question_id and q.class_id = v_student.class_id and q.is_hidden = false;
+  if not found then
     raise exception 'QUESTION_NOT_FOUND';
   end if;
 
-  delete from public.votes where question_id = p_question_id and student_id = v_student.id;
-  if found then
+  if v_class.voting_status = 'before' then
+    raise exception 'VOTING_NOT_STARTED';
+  elsif v_class.voting_status <> 'open' then
+    raise exception 'VOTING_CLOSED';
+  end if;
+
+  v_my_votes := public.student_vote_count(v_student.id);
+
+  if exists (
+    select 1 from public.votes v
+    where v.question_id = p_question_id and v.student_id = v_student.id
+  ) then
+    -- 취소
+    if not v_class.allow_vote_change and v_my_votes <= v_class.max_votes then
+      raise exception 'VOTE_CHANGE_NOT_ALLOWED';
+    end if;
+    delete from public.votes where question_id = p_question_id and student_id = v_student.id;
     return false;
   end if;
 
+  -- 새 투표
+  if not v_class.allow_self_vote and v_question.student_id = v_student.id then
+    raise exception 'SELF_VOTE_NOT_ALLOWED';
+  end if;
+  if v_my_votes >= v_class.max_votes then
+    raise exception 'VOTE_LIMIT_REACHED';
+  end if;
+
   insert into public.votes (question_id, student_id)
-  values (p_question_id, v_student.id)
-  on conflict (question_id, student_id) do nothing;
+  values (p_question_id, v_student.id);
   return true;
 end;
 $$;
 
 -- ---------------------------------------------------------------------
 -- 8. 함수 실행 권한: 로그인 사용자(교사/익명 학생)만
+--  Supabase 는 기본으로 authenticated 에 모든 함수 실행 권한을 주므로 먼저 모두 회수합니다.
+--  내부 함수(generate_class_code, student_context_json, 트리거 함수)는 RPC 로 직접 부를 수 없습니다.
 -- ---------------------------------------------------------------------
-revoke execute on all functions in schema public from public, anon;
+revoke execute on all functions in schema public from public, anon, authenticated;
 grant execute on function
   public.is_teacher(),
   public.owns_class(uuid),
@@ -551,6 +675,41 @@ grant execute on function
   public.get_my_student(),
   public.leave_class(),
   public.list_class_questions(),
-  public.create_question(text, text, text),
+  public.create_question(text),
   public.toggle_vote(uuid)
 to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 9. (추후) 질문 분류 활동 — 설계 메모, 아직 만들지 않습니다.
+--  교사가 활동을 만들고 분류 체계 하나와 분류할 질문을 고르면,
+--  학생들이 질문 카드를 범주로 드래그앤드롭합니다. 학생마다 따로 응답합니다.
+--
+--  classification_activities
+--    id              uuid pk
+--    class_id        uuid → classes (on delete cascade)
+--    framework_code  text → classification_frameworks (on update cascade)
+--    title           text
+--    status          text  'draft' | 'open' | 'closed'  (open 일 때만 학생 응답 가능)
+--    created_at      timestamptz
+--
+--  classification_activity_questions      (활동에 포함할 질문)
+--    activity_id     uuid → classification_activities (on delete cascade)
+--    question_id     uuid → questions (on delete cascade)
+--    sort_order      int
+--    primary key (activity_id, question_id)
+--    -- 질문의 class_id = 활동의 class_id 인지 트리거로 확인
+--
+--  classification_responses               (학생 한 명의 한 질문 분류 결과)
+--    id              uuid pk
+--    activity_id     uuid
+--    question_id     uuid
+--    student_id      uuid → students (on delete cascade)
+--    category_id     uuid → classification_categories
+--    updated_at      timestamptz
+--    foreign key (activity_id, question_id) → classification_activity_questions
+--    unique (activity_id, question_id, student_id)   -- 다시 끌어 놓으면 upsert
+--    -- category 의 framework_code = 활동의 framework_code 인지 트리거로 확인
+--
+--  접근: 교사는 owns_class 로 RLS, 학생은 다른 기능처럼 security definer RPC 만 사용
+--  (예: list_my_classification_activity, set_classification_response)
+-- ---------------------------------------------------------------------
