@@ -173,7 +173,8 @@ export default function StudentActivity() {
             {activity.questions.length === 0 ? (
               <EmptyState icon={<Inbox className="size-14" />} title="분류할 질문이 없어요" />
             ) : (
-              <div className="grid gap-4 md:grid-cols-[repeat(auto-fit,minmax(16rem,1fr))]">
+              // 미분류 칸은 한 줄 전체, 영역들은 줄 너비를 나눠 채움 (좁으면 다음 줄로)
+              <div className="flex flex-wrap gap-4">
                 {zones.map((zone) => {
                   const cards = activity.questions.filter((q) => (placement[q.id] ?? null) === zone.area)
                   const canDropHere = selectedId !== null && selectedArea !== zone.area
@@ -183,7 +184,7 @@ export default function StudentActivity() {
                       aria-label={zone.name}
                       className={cx(
                         'flex min-h-40 flex-col gap-3 rounded-3xl border-2 p-4',
-                        zone.area === null ? 'border-dashed border-line-strong bg-cream md:col-span-full' : 'border-line bg-paper shadow-pop',
+                        zone.area === null ? 'w-full border-dashed border-line-strong bg-cream' : 'min-w-0 flex-1 basis-60 border-line bg-paper shadow-pop',
                         canDropHere && 'border-mint ring-4 ring-mint/40',
                       )}
                     >

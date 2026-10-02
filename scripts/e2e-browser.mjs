@@ -55,13 +55,20 @@ const QA = '왜 낙엽은 가을에 떨어질까요?'
 const QB = '달은 왜 모양이 바뀔까요?'
 const card = (page, text) => page.locator('li', { hasText: text }).first()
 const voteBtn = (page, text) => card(page, text).getByRole('button', { name: /투표/ })
-// 투표 버튼 클릭 후 서버 처리(toggle_vote)와 목록 새로고침까지 기다림
+// 투표 버튼 클릭 후 서버 처리(toggle_vote)와 목록 새로고침까지 기다림.
+// 앱은 직전 투표를 처리하는 동안(화면 표시 없이 아주 잠깐) 같은 버튼 클릭을 무시하므로,
+// 요청이 나가지 않았으면 잠시 뒤 다시 누릅니다.
 const clickVote = async (page, text) => {
-  const done = page.waitForResponse((r) => r.url().includes('/rpc/list_class_questions'), { timeout: 15000 })
-  const voted = page.waitForResponse((r) => r.url().includes('/rpc/toggle_vote'), { timeout: 15000 })
-  await voteBtn(page, text).click()
-  await voted
-  await done
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const voted = page.waitForRequest((r) => r.url().includes('/rpc/toggle_vote'), { timeout: 3000 }).catch(() => null)
+    await voteBtn(page, text).click()
+    const request = await voted
+    if (!request) continue
+    await page.waitForResponse((r) => r.url().includes('/rpc/list_class_questions'), { timeout: 15000 })
+    await request.response()
+    return
+  }
+  throw new Error(`투표 요청이 나가지 않음: ${text}`)
 }
 const reload = async (page) => {
   await page.reload()
