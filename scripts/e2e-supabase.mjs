@@ -1,5 +1,5 @@
 // 실제 Supabase 프로젝트에서 핵심 흐름을 확인합니다.
-//   교사 회원가입/로그인 → 학급 생성 → 학생 입장 → 질문 작성 → 익명성 확인 → 투표 → 질문 삭제 → 투표 초기화
+//   교사 회원가입/로그인 → 학급 생성 → 학생 입장 → 질문 작성 → 익명성 확인 → 투표 → 질문 삭제 → 투표 초기화 → 질문 분류 활동
 //
 // 실행: NODE_USE_ENV_PROXY=1 node scripts/e2e-supabase.mjs [--keep]
 //   - VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY(또는 VITE_SUPABASE_ANON_KEY) 환경 변수가 필요합니다.
@@ -221,6 +221,60 @@ try {
   check('64 투표 설정은 그대로', show(before) === show(after), `${show(before)} → ${show(after)}`)
   ctx = await stuA.rpc('get_my_student')
   check('65 학생 A 표 0개, 질문은 그대로', ctx.data?.my_vote_count === 0 && (await stuA.rpc('list_class_questions')).data?.length === 1, show(ctx.data))
+
+  // 9. 질문 분류 활동 --------------------------------------------------------
+  const qC = await stuA.rpc('create_question', { p_content: '비는 왜 내릴까요?' })
+  check('66 분류용 질문 추가', !qC.error && qC.data, errMsg(qC.error))
+  const saveAct = (id, title, areas, ids) =>
+    teacher.rpc('save_classification_activity', {
+      p_activity_id: id, p_class_id: classId, p_title: title, p_area_names: areas, p_question_ids: ids,
+    })
+  const act1 = await saveAct(null, 'E2E 분류 활동', [' 사실 ', '생각'], [qB.data, qC.data])
+  check('67 교사 분류 활동 만들기', !act1.error && act1.data, errMsg(act1.error))
+  r = await saveAct(null, 'x', ['하나'], [qB.data])
+  check('68 영역 1개는 거부', r.error?.message === 'INVALID_AREAS', errMsg(r.error))
+  r = await stuA.rpc('save_classification_activity', {
+    p_activity_id: null, p_class_id: classId, p_title: 'x', p_area_names: ['가', '나'], p_question_ids: [qB.data],
+  })
+  check('69 학생은 활동 만들기 불가', r.error?.message === 'FORBIDDEN', errMsg(r.error))
+  const listOpen = async (c) => (await c.rpc('list_open_classification_activities')).data ?? []
+  check('70 공개 전: 학생 목록 비어 있음', (await listOpen(stuA)).length === 0)
+  const open1 = await teacher.from('classification_activities').update({ is_open: true }).eq('id', act1.data).select('id')
+  check('71 교사 학생에게 공개', !open1.error && open1.data?.length === 1, errMsg(open1.error))
+  const l1 = await listOpen(stuA)
+  check('72 학생 목록: 공개된 활동 (영역 2, 질문 2)', l1.length === 1 && l1[0].area_count === 2 && l1[0].question_count === 2, show(l1))
+  const got = await stuB.rpc('get_classification_activity', { p_activity_id: act1.data })
+  check('73 학생 조회: 제목, 영역(공백 정리), 질문 2개',
+    !got.error && got.data.title === 'E2E 분류 활동' && show(got.data.area_names) === show(['사실', '생각']) && got.data.questions.length === 2,
+    show(got.data ?? got.error))
+  check('74 학생 조회 응답 키: 제목/영역/질문(id, 내용)만',
+    show(Object.keys(got.data ?? {}).sort()) === show(['area_names', 'id', 'questions', 'title']) &&
+      (got.data?.questions ?? []).every((q) => show(Object.keys(q).sort()) === show(['content', 'id'])),
+    show(got.data))
+  check('75 학생 조회 응답에 작성자 이름 없음', !/김 하늘|이바다/.test(show(got.data)), show(got.data))
+  await teacher.from('questions').update({ is_hidden: true }).eq('id', qC.data)
+  const gotHidden = await stuA.rpc('get_classification_activity', { p_activity_id: act1.data })
+  check('76 숨긴 질문은 학생 활동에서 제외', gotHidden.data?.questions.length === 1, show(gotHidden.data))
+  await teacher.from('questions').update({ is_hidden: false }).eq('id', qC.data)
+  const act2 = await saveAct(null, 'E2E 두 번째 활동', ['A', 'B', 'C'], [qB.data])
+  await teacher.from('classification_activities').update({ is_open: true }).eq('id', act2.data)
+  check('77 여러 활동 동시 공개: 학생 목록 2개', (await listOpen(stuB)).length === 2)
+  const stuSel = await stuA.from('classification_activities').select('id')
+  const stuUpd = await stuA.from('classification_activities').update({ is_open: false }).eq('id', act1.data).select('id')
+  check('78 학생은 활동 테이블 직접 조회/변경 불가',
+    (Boolean(stuSel.error) || stuSel.data.length === 0) && (Boolean(stuUpd.error) || stuUpd.data.length === 0),
+    `${show(stuSel.data)} ${show(stuUpd.data)}`)
+  const edited = await saveAct(act1.data, 'E2E 분류 활동', ['사실', '생각', '느낌'], [qC.data])
+  const gotEdited = await stuA.rpc('get_classification_activity', { p_activity_id: act1.data })
+  check('79 교사 수정: 영역 3개, 질문 1개로 바뀌고 공개 유지',
+    !edited.error && gotEdited.data?.area_names.length === 3 && gotEdited.data?.questions.length === 1, show(gotEdited.data ?? gotEdited.error))
+  await teacher.from('questions').delete().eq('id', qC.data)
+  const gotAfterDelete = await stuA.rpc('get_classification_activity', { p_activity_id: act1.data })
+  check('80 질문을 삭제하면 활동에서도 빠짐', gotAfterDelete.data?.questions.length === 0, show(gotAfterDelete.data))
+  const delAct = await teacher.from('classification_activities').delete().eq('id', act2.data).select('id')
+  check('81 교사 활동 삭제', !delAct.error && delAct.data?.length === 1 && (await listOpen(stuA)).length === 1, errMsg(delAct.error))
+  const qCount = (await teacher.from('questions').select('id').eq('class_id', classId)).data?.length
+  check('82 활동 작업 후에도 질문(1개)과 투표(0표) 그대로', qCount === 1 && (await tVotes()) === 0, `${qCount} / ${await tVotes()}`)
 } catch (e) {
   failed++
   console.log(`FAIL 중단: ${e.message}`)

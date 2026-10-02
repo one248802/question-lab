@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, LogOut, Menu, MessageCircleQuestion, School, Settings, Users, X } from 'lucide-react'
+import { LayoutDashboard, LayoutGrid, LogOut, Menu, MessageCircleQuestion, School, Settings, Users, X } from 'lucide-react'
 import { QuestionBoxIcon } from '../../components/Logo'
 import { Spinner, cx } from '../../components/ui'
 import { useAuth } from '../../contexts/AuthContext'
@@ -11,6 +11,7 @@ const MENU = [
   { to: '/teacher', label: '대시보드', icon: LayoutDashboard, end: true },
   { to: '/teacher/classes', label: '학급 관리', icon: School },
   { to: '/teacher/questions', label: '우리반 질문 상자', icon: MessageCircleQuestion },
+  { to: '/teacher/activities', label: '질문 분류 활동', icon: LayoutGrid },
   { to: '/teacher/students', label: '학생 관리', icon: Users },
   { to: '/teacher/settings', label: '설정', icon: Settings },
 ]

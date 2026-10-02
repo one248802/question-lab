@@ -1,5 +1,5 @@
 // 실제 Supabase 를 연결한 앱을 브라우저(Chromium)로 조작해 핵심 흐름을 확인합니다.
-//   교사 가입/로그인 → 학급 생성 → 학생 2명 입장 → 질문 작성 → 익명성 → 투표(before/open/closed) → 질문 삭제 → 투표 초기화
+//   교사 가입/로그인 → 학급 생성 → 학생 2명 입장 → 질문 작성 → 익명성 → 투표(before/open/closed) → 질문 삭제 → 투표 초기화 → 질문 분류 활동
 //
 // 실행:
 //   1) npm run dev            (다른 터미널, .env 또는 환경 변수에 Supabase 값 필요)
@@ -277,6 +277,97 @@ try {
   await reload(stuB)
   check('B42 학생 B: 투표가 지워져 남은 표 1 / 1', await stuB.getByText('남은 표 1 / 1').isVisible())
   check('B43 학생 B: 질문은 그대로, 투표 표시 해제', (await voteBtn(stuB, QA).getAttribute('aria-pressed')) === 'false')
+
+  // 13. 질문 분류 활동 (tap-to-move) -------------------------------------------
+  const QC = '무지개는 왜 둥글까요?'
+  const ACT = `분류 활동 ${stamp.slice(8, 12)}`
+  await stuA.getByLabel('질문 내용').fill(QC)
+  await stuA.getByRole('button', { name: '질문 올리기' }).click()
+  await stuA.getByText('질문이 올라갔어요!').waitFor({ timeout: 10000 })
+
+  await teacher.getByRole('link', { name: '질문 분류 활동' }).click()
+  await teacher.waitForURL(`${BASE}/teacher/activities`)
+  await teacher.getByRole('button', { name: '새 분류 활동' }).click()
+  await teacher.locator('#activity-title').fill(ACT)
+  await teacher.getByLabel('영역 1 이름').fill('사실')
+  await teacher.getByLabel('영역 2 이름').fill('생각')
+  await teacher.getByRole('button', { name: '영역 추가' }).click()
+  await teacher.getByLabel('영역 3 이름').fill('느낌')
+  await teacher.getByRole('button', { name: '모두 선택' }).click()
+  await teacher.getByRole('button', { name: '저장' }).click()
+  const actCard = teacher.locator('li', { hasText: ACT }).first()
+  await actCard.waitFor({ timeout: 10000 })
+  const actText = await actCard.innerText()
+  check('B44 교사 분류 활동 만들기 (비공개, 영역 3개, 질문 2개)',
+    actText.includes('비공개') && ['사실', '생각', '느낌'].every((n) => actText.includes(n)) && actText.includes('질문 2개'), actText)
+  await shot(teacher, '11-teacher-activities')
+
+  await reload(stuA)
+  check('B45 공개 전: 학생 화면에 분류 활동 없음', (await stuA.getByRole('link', { name: new RegExp(ACT) }).count()) === 0)
+  await teacher.getByRole('switch', { name: `${ACT} 학생에게 공개` }).click()
+  await actCard.getByText('학생에게 공개', { exact: true }).waitFor({ timeout: 10000 })
+  await reload(stuA)
+  const actLink = stuA.getByRole('link', { name: new RegExp(ACT) })
+  check('B46 공개 후: 학생 게시판에 분류 활동 표시', (await actLink.innerText()).includes('질문 2개 · 영역 3개'), await actLink.innerText())
+  await actLink.click()
+  await stuA.waitForURL(/\/student\/activity\//)
+  const tray = stuA.getByRole('region', { name: '아직 분류하지 않은 질문' })
+  const zone = (name) => stuA.getByRole('region', { name })
+  await tray.getByRole('button', { name: QA }).waitFor({ timeout: 10000 })
+  check('B47 분류 화면: 질문 2개가 미분류, 영역 3개',
+    (await tray.getByRole('button').count()) === 2 && (await zone('사실').count()) === 1 && (await zone('느낌').count()) === 1)
+  const pageText = await stuA.locator('main').innerText()
+  check('B48 분류 화면에 작성자 정보 없음', !/김하늘|이바다|\d+번/.test(pageText), pageText.slice(0, 200))
+
+  await tray.getByRole('button', { name: QA }).click()
+  check('B49 카드를 누르면 선택되고 「여기에 놓기」 표시',
+    (await tray.getByRole('button', { name: QA }).getAttribute('aria-pressed')) === 'true' &&
+      (await stuA.getByRole('button', { name: '여기에 놓기' }).count()) === 3)
+  await zone('사실').getByRole('button', { name: '여기에 놓기' }).click()
+  check('B50 「사실」 영역으로 이동', (await zone('사실').getByRole('button', { name: QA }).count()) === 1 && (await tray.getByRole('button').count()) === 1)
+  await zone('사실').getByRole('button', { name: QA }).click()
+  await zone('생각').getByRole('button', { name: '여기에 놓기' }).click()
+  await tray.getByRole('button', { name: QC }).click()
+  await zone('느낌').getByRole('button', { name: '여기에 놓기' }).click()
+  check('B51 다른 영역으로 다시 옮기기',
+    (await zone('생각').getByRole('button', { name: QA }).count()) === 1 && (await zone('사실').getByRole('button').count()) === 0 &&
+      (await zone('느낌').getByRole('button', { name: QC }).count()) === 1)
+  await shot(stuA, '12-student-activity')
+  await stuA.reload()
+  await zone('생각').getByRole('button', { name: QA }).waitFor({ timeout: 10000 })
+  check('B52 새로고침해도 배치 유지 (sessionStorage)', (await zone('느낌').getByRole('button', { name: QC }).count()) === 1)
+  const stored = await stuA.evaluate(() => Object.keys(sessionStorage).filter((k) => k.startsWith('qlab:classify:')).length)
+  check('B53 배치는 이 탭의 sessionStorage 에만 있음', stored === 1, String(stored))
+
+  await stuB.goto(`${BASE}${new URL(stuA.url()).pathname}`)
+  await stuB.getByRole('region', { name: '아직 분류하지 않은 질문' }).getByRole('button', { name: QA }).waitFor({ timeout: 10000 })
+  check('B54 다른 학생은 자기 화면에서 처음부터 (배치 공유 안 됨)',
+    (await stuB.getByRole('region', { name: '아직 분류하지 않은 질문' }).getByRole('button').count()) === 2)
+
+  await stuA.getByRole('button', { name: '처음으로' }).click()
+  await tray.getByRole('button', { name: QA }).waitFor({ timeout: 5000 })
+  check('B55 「처음으로」: 모두 미분류로', (await tray.getByRole('button').count()) === 2)
+
+  await actCard.getByRole('button', { name: '수정' }).click()
+  await teacher.getByLabel('영역 3 이름').fill('궁금함')
+  await teacher.getByRole('button', { name: '저장' }).click()
+  await actCard.getByText('궁금함').waitFor({ timeout: 10000 })
+  await stuA.getByRole('button', { name: '새로고침' }).click()
+  await zone('궁금함').waitFor({ timeout: 10000 })
+  check('B56 교사가 영역 이름 수정 → 학생 새로고침 시 반영', (await zone('느낌').count()) === 0)
+
+  await teacher.getByRole('switch', { name: `${ACT} 학생에게 공개` }).click()
+  await actCard.getByText('비공개', { exact: true }).waitFor({ timeout: 10000 })
+  await stuA.getByRole('button', { name: '새로고침' }).click()
+  await stuA.getByText('분류 활동을 열 수 없어요').waitFor({ timeout: 10000 })
+  check('B57 비공개로 바꾸면 학생은 열 수 없음', true)
+
+  await actCard.getByRole('button', { name: '삭제' }).click()
+  await actCard.waitFor({ state: 'detached', timeout: 10000 })
+  check('B58 교사 활동 삭제 (확인창)', true)
+  await stuA.goto(`${BASE}/student/board`)
+  await card(stuA, QC).waitFor({ timeout: 10000 })
+  check('B59 활동을 지워도 질문은 그대로', (await card(stuA, QA).count()) === 1 && (await card(stuA, QC).count()) === 1)
 } catch (e) {
   failed++
   console.log(`FAIL 중단: ${e.message.split('\n')[0]}`)

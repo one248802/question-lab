@@ -79,3 +79,31 @@ export interface StudentContext {
   /** 숨겨지지 않은 질문에 한 내 표 수 */
   my_vote_count: number
 }
+
+/** 질문 분류 활동 (교사 화면) */
+export interface ClassificationActivity {
+  id: string
+  class_id: string
+  title: string
+  area_names: string[]
+  is_open: boolean
+  created_at: string
+  classification_activity_questions: Array<{ question_id: string; sort_order: number }>
+}
+
+/** 학생에게 공개된 분류 활동 목록의 한 줄 */
+export interface OpenActivity {
+  id: string
+  title: string
+  area_count: number
+  question_count: number
+  created_at: string
+}
+
+/** 학생이 받는 분류 활동 (질문은 id 와 내용만) */
+export interface ActivityForStudent {
+  id: string
+  title: string
+  area_names: string[]
+  questions: Array<{ id: string; content: string }>
+}

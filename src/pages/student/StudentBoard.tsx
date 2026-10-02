@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Heart, Inbox, LogOut, RefreshCw, UserRound } from 'lucide-react'
+import { OpenActivities } from '../../components/OpenActivities'
 import { QuestionComposer } from '../../components/QuestionComposer'
 import { Button, ChoiceChips, ErrorBox, EmptyState, Spinner, cx } from '../../components/ui'
 import { useAuth } from '../../contexts/AuthContext'
@@ -150,8 +151,9 @@ export default function StudentBoard() {
       </header>
 
       <main className="mx-auto grid max-w-6xl gap-6 px-4 py-6 lg:grid-cols-[22rem_1fr] lg:items-start">
-        <div className="lg:sticky lg:top-24">
+        <div className="flex flex-col gap-6 lg:sticky lg:top-24">
           <QuestionComposer onSubmit={submitQuestion} />
+          <OpenActivities />
         </div>
 
         <section className="flex flex-col gap-4">
