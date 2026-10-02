@@ -48,7 +48,7 @@
   | `a4831f8` | 질문은 content만, 분류 체계 조회 테이블, 함수 권한 보안 수정 |
   | `f90dbc4` | `VITE_SUPABASE_PUBLISHABLE_KEY` 환경 변수 이름 지원 |
 
-- **정리할 원격 브랜치**: `claude/admiring-edison-vllnk4`(PR #2 head, 병합 완료)와 `claude/epic-lamport-evuclk`(PR #1 head)는 내용이 모두 main에 있으므로 지워도 됩니다. Claude 클라우드 환경의 git 프록시는 원격 브랜치 삭제를 막으므로 GitHub에서 지우세요.
+- **브랜치 정리**: 병합된 작업 브랜치는 GitHub에서 지웁니다(PR 화면의 **Delete branch**). Claude 클라우드 환경의 git 프록시는 원격 브랜치 삭제를 막습니다.
 
 ## 4. 구현 완료된 기능
 
@@ -67,7 +67,8 @@
 - **익명 질문 등록**: `create_question(p_content text)`. 내용만 입력하고 유형은 고르지 않습니다. 1~300자이고, 3초 안에 다시 올리는 것은 막습니다.
 - **학생에게 작성자 비공개**: 학생은 테이블에 직접 접근할 수 없고 `list_class_questions` RPC만 씁니다. 이 RPC는 작성자 정보 없이 `is_mine`만 돌려줍니다.
 - **교사만 작성자 확인**: 교사 화면(`/teacher/questions`)에서 번호와 이름을 표시합니다. RLS로 자기 학급 질문만 볼 수 있습니다.
-- **질문 숨김/삭제**: 숨김은 교사 UI에 있습니다(숨기기/다시 공개). 숨긴 질문은 학생 목록과 투표 대상에서 빠집니다. **삭제는 DB(RLS 정책 `questions: teacher delete`)에서만 허용되고, 교사 화면에 삭제 버튼은 아직 없습니다.** (9번 참고)
+- **질문 숨기기**: 교사 화면의 숨기기/다시 공개. 숨긴 질문은 학생 목록과 투표 대상에서 빠지고, 표는 남아 있다가 다시 공개하면 돌아옵니다.
+- **질문 삭제**: 교사 화면의 **삭제** 버튼 (숨기기와 별개, 확인창에 받은 표 수 안내). 담당 교사만 삭제할 수 있습니다(RLS 정책 `questions: teacher delete`). 질문에 받은 표는 `votes.question_id ... on delete cascade`로 함께 지워지므로, 학생은 그 표를 돌려받고 학생 목록에서도 바로 사라집니다. 되돌릴 수 없습니다.
 
 ### 투표 (학급별 설정, 모두 서버 `toggle_vote`에서 검사)
 | 설정 | 기본값 | 내용 |
@@ -88,9 +89,10 @@
 - **숨겨진 질문에 한 표**는 학생의 투표 개수에서 뺍니다(취소할 방법이 없기 때문).
 - **동시성**: 투표할 때 학생 행을 `for update`로 잠가서, 여러 기기에서 동시에 눌러도 한도를 넘지 않습니다.
 - **중복 투표 방지**: `votes (question_id, student_id)` unique 제약
+- **투표 초기화**: `reset_class_votes(p_class_id)` RPC (migration `20261002120000_reset_class_votes.sql`). 담당 교사만 실행할 수 있고(함수 안에서 `owns_class` 확인, 아니면 `FORBIDDEN`), 그 학급의 votes만 지운 뒤 지운 표 수를 돌려줍니다. 질문과 투표 설정(`voting_status`, `max_votes`, `allow_self_vote` 등)은 그대로입니다. 투표 상태와 상관없이 실행할 수 있습니다. 교사 설정 화면의 **투표 초기화** 버튼(확인창)
 
 ### 투표 UI
-- **교사** (`/teacher/settings`): 학급마다 상태 설명과 [투표 시작 / 투표 종료 / 투표 다시 열기] 버튼, 투표 개수 선택, 스위치 4개
+- **교사** (`/teacher/settings`): 학급마다 상태 설명과 [투표 시작 / 투표 종료 / 투표 다시 열기] 버튼, 투표 개수 선택, 스위치 4개, [투표 초기화] 버튼
 - **학생** (`/student/board`): "투표가 아직 시작되지 않았어요", "투표 중 · 남은 표 n/N", "투표가 종료되었습니다" 상태 표시. 초과 시 취소 안내. 서버가 거절할 버튼은 미리 비활성화하고 이유를 보여 줌
 
 ### 질문 분류 체계 (설계 + 조회 테이블만 있음)
@@ -115,8 +117,9 @@
 
 | 항목 | 결과 |
 | --- | --- |
-| `./scripts/test-db.sh` | ✅ migration 전체를 단일 트랜잭션으로 실행 성공, **DB 테스트 50/50 통과** |
-| `supabase/tests/voting_test.sql` | 테스트 50개: profiles 트리거, 기본값, before/open/closed 규칙, 상태 전환, max_votes 감소, 자기 투표, 결과 공개 조합, 숨김, 권한 |
+| `./scripts/test-db.sh` | ✅ 모든 migration을 순서대로(파일마다 단일 트랜잭션) 적용한 뒤, 테스트 파일마다 새 DB 복사본에서 실행. **77/77 통과** |
+| `supabase/tests/voting_test.sql` | 50개: profiles 트리거, 기본값, before/open/closed 규칙, 상태 전환, max_votes 감소, 자기 투표, 결과 공개 조합, 숨김, 권한 |
+| `supabase/tests/question_delete_reset_test.sql` | 27개: 질문 삭제 권한(학생·다른 교사 불가), 표 cascade 삭제와 표 돌려받기, 학생 목록에서 사라짐, 투표 초기화 권한(학생·다른 교사·비로그인 불가), 학급 표만 삭제, 질문·설정 유지, 다른 학급 영향 없음, 초기화 후 재투표 |
 | `npm run build` | ✅ 통과. 번들 500kB 초과 경고만 있음 |
 | `npm run lint` | 에러 0. **경고 10개는 이번 작업 전부터 있던 것** (`set-state-in-effect`, `only-export-components`) |
 
@@ -148,6 +151,7 @@
 | Claude 환경 변수 | 설정 완료: `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`. 코드는 `VITE_SUPABASE_ANON_KEY`도 읽음 |
 | 네트워크 | `*.supabase.co` 허용 완료. Auth API 200 응답 확인 |
 | **migration** | ✅ **적용 완료 (2026-10-02)**. 현재 main의 `20261001000000_init.sql`을 SQL Editor에서 실행. 그 전에 PR #1 시절 구버전 migration이 실행되어 있어서 `supabase/dev/reset_app_schema.sql`로 앱 객체만 정리한 뒤 다시 적용 |
+| migration `20261002120000_reset_class_votes.sql` | ⏳ 아직 실제 DB에 적용하지 않음 (투표 초기화 RPC) |
 | Anonymous Sign-ins | ✅ 켜져 있음. 실제 익명 로그인으로 학생 입장 확인 |
 | Confirm email | 꺼져 있음 (`mailer_autoconfirm: true`, 가입하면 바로 로그인). 운영 전 결정 필요 |
 | Site URL | 확인하지 않음. 배포 후 Authentication → URL Configuration에서 설정 |
@@ -162,7 +166,7 @@
 
 1. 운영 전 Supabase 설정 결정: Confirm email 켤지, Site URL(배포 주소), 테스트 계정 정리
 2. 배포 (vercel.json 있음, 배포 환경 변수 `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` 필요) 후 배포 주소에서 `BASE_URL=<배포 주소> node scripts/e2e-browser.mjs` 로 한 번 더 확인
-3. 작은 미해결 항목 중 필요한 것 선택 (9번: 질문 삭제 버튼, 투표 초기화 등)
+3. 작은 미해결 항목 중 필요한 것 선택 (9번)
 4. 2차 기능 착수 (8번). 첫 후보는 질문 분류 활동 (init migration 9번 섹션의 설계 메모 참고, 새 migration 파일로 테이블 추가)
 
 ## 8. 아직 구현하지 않은 2차 기능
@@ -184,8 +188,8 @@
 
 1. migration은 2026-10-02 실제 Supabase에 적용했고, 실제 환경 API 검증 58개, 브라우저 검증 34개를 통과했습니다. 로컬 stub(`supabase_stub.sql`)은 실제 Supabase를 단순화한 것이라, 새 migration은 로컬 테스트 후 실제 환경 검증 스크립트로도 확인하세요.
 2. **`20261001000000_init.sql`은 실제 DB에 적용되었으므로 더 이상 고치지 않습니다.** 변경은 새 migration 파일로 합니다.
-3. **교사 화면에 질문 삭제 버튼이 없습니다.** 숨김만 있고, 삭제는 DB 권한만 있습니다. 필요하면 QuestionsPage에 추가하세요.
-4. **투표 초기화 기능이 없습니다.** 다시 열기를 해도 기존 표는 유지됩니다. 새 투표 라운드가 필요하면 `reset_class_votes` 같은 교사 RPC를 추가해야 합니다.
+3. 질문 삭제와 투표 초기화는 되돌릴 수 없습니다(확인창만 있음). 삭제된 질문/표를 복구하거나 기록을 남기는 기능은 없습니다.
+4. 투표를 다시 열어도 기존 표는 유지됩니다. 새 라운드가 필요하면 설정 화면의 **투표 초기화**를 씁니다.
 5. 교사 화면의 투표 수에는 숨긴 질문에 한 표도 그대로 표시됩니다. 학생의 개수 계산에서는 빠집니다.
 6. **학생 신원 확인이 약합니다**: 클래스 코드 + 번호 + 이름만 알면 같은 학생으로 입장할 수 있습니다. **현재 사용 목적상 허용하기로 결정했습니다 (2026-10-02). 교사 승인·PIN 같은 인증 강화는 이번 범위에서 구현하지 않습니다.**
 7. 실시간 갱신이 아니라 폴링입니다(학생 10초, 교사 15초). 설정 변경은 다음 폴링 때 학생 화면에 반영됩니다.
@@ -201,8 +205,10 @@
 
 | 파일 | 내용 |
 | --- | --- |
-| `supabase/migrations/20261001000000_init.sql` | 전체 스키마, RLS, RPC, 트리거, 권한 (단일 파일) |
-| `supabase/tests/voting_test.sql` | DB 테스트 50개 |
+| `supabase/migrations/20261001000000_init.sql` | 초기 스키마, RLS, RPC, 트리거, 권한. **실제 DB 적용 완료, 수정 금지** |
+| `supabase/migrations/20261002120000_reset_class_votes.sql` | 투표 초기화 RPC `reset_class_votes` |
+| `supabase/tests/voting_test.sql` | DB 테스트 50개 (투표 규칙) |
+| `supabase/tests/question_delete_reset_test.sql` | DB 테스트 27개 (질문 삭제, 투표 초기화) |
 | `supabase/tests/supabase_stub.sql` | 로컬 테스트용 Supabase 흉내 |
 | `scripts/test-db.sh` | 임시 Postgres로 migration + 테스트 실행 |
 | `scripts/e2e-supabase.mjs` | 실제 Supabase API 검증 (`NODE_USE_ENV_PROXY=1 node scripts/e2e-supabase.mjs [--keep]`) |
@@ -233,7 +239,7 @@
   allow_vote_change, show_results_during_voting, show_results_after_voting. 규칙은 toggle_vote RPC 에서 검사
 - 질문 분류 체계 조회 테이블(classification_frameworks/categories)만 있고, 분류 활동 테이블은 init migration 9번에 설계 주석만 있음
 - 실제 Supabase(https://ogmsfyuhtrljcubuhclq.supabase.co)에 init migration 적용 완료, PR #2 로 main 병합 완료 (2026-10-02)
-- 검증: ./scripts/test-db.sh 50/50, scripts/e2e-supabase.mjs 58/58, scripts/e2e-browser.mjs 34/34,
+- 검증: ./scripts/test-db.sh 77/77, scripts/e2e-supabase.mjs 58/58, scripts/e2e-browser.mjs 34/34,
   npm run build 통과, lint 경고 10개는 기존 것
 
 규칙:

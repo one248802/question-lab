@@ -53,7 +53,7 @@ begin
         'classes_before_insert', 'classes_check_voting_status', 'handle_new_user',
         'vote_results_visible', 'student_vote_count', 'student_context_json',
         -- 교사 RPC
-        'teacher_class_stats', 'regenerate_class_code',
+        'teacher_class_stats', 'regenerate_class_code', 'reset_class_votes',
         -- 학생 RPC
         'join_class', 'get_my_student', 'leave_class', 'list_class_questions',
         'create_question', 'toggle_vote'
@@ -87,7 +87,7 @@ where n.nspname = 'public'
   and p.proname in ('is_teacher', 'owns_class', 'current_student_id', 'generate_class_code',
                     'classes_before_insert', 'classes_check_voting_status', 'handle_new_user',
                     'vote_results_visible', 'student_vote_count', 'student_context_json',
-                    'teacher_class_stats', 'regenerate_class_code', 'join_class',
+                    'teacher_class_stats', 'regenerate_class_code', 'reset_class_votes', 'join_class',
                     'get_my_student', 'leave_class', 'list_class_questions',
                     'create_question', 'toggle_vote')
 union all

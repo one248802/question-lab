@@ -19,12 +19,20 @@ run "'$PG_BIN/initdb' -D '$DIR/data' -A trust >/dev/null"
 run "'$PG_BIN/pg_ctl' -D '$DIR/data' -o '-p $PORT -k $DIR -c listen_addresses=' -l '$DIR/log' start >/dev/null"
 
 PSQL=(psql -h "$DIR" -p "$PORT" -U postgres -X -q -v ON_ERROR_STOP=1)
-"${PSQL[@]}" -f "$ROOT/supabase/tests/supabase_stub.sql"
+
+# Supabase 흉내 + 모든 migration 을 순서대로(파일마다 단일 트랜잭션) 적용한 템플릿 DB
+"${PSQL[@]}" -d postgres -c "create database qlab_template"
+"${PSQL[@]}" -d qlab_template -f "$ROOT/supabase/tests/supabase_stub.sql"
 for f in "$ROOT"/supabase/migrations/*.sql; do
   echo "== migration: $(basename "$f") (single transaction)"
-  "${PSQL[@]}" -1 -f "$f"
+  "${PSQL[@]}" -d qlab_template -1 -f "$f"
 done
+
+# 테스트 파일마다 템플릿을 복사한 새 DB 에서 실행 (서로 영향 없음)
+n=0
 for f in "$ROOT"/supabase/tests/*_test.sql; do
+  n=$((n + 1))
   echo "== test: $(basename "$f")"
-  "${PSQL[@]}" -f "$f"
+  "${PSQL[@]}" -d postgres -c "create database qlab_test_$n template qlab_template"
+  "${PSQL[@]}" -d "qlab_test_$n" -f "$f"
 done
