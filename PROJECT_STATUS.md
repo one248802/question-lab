@@ -1,6 +1,6 @@
 # PROJECT_STATUS — 우리반 질문 상자
 
-> 마지막 정리: 2026-10-02 (실제 Supabase 적용·검증 완료, PR #2 main 병합 완료)
+> 마지막 정리: 2026-10-02 (질문 분류 활동 PR A 작업 중)
 > 다음 세션은 이 문서만 읽고 이어서 작업할 수 있도록 작성했습니다. 맨 아래 **작업 재개 프롬프트**를 그대로 붙여 넣으세요.
 
 ---
@@ -24,7 +24,7 @@
 ## 3. 브랜치 / 커밋 / PR
 
 - **기준 브랜치**: `main`. 모든 기능과 최신 migration이 `main`에 들어가 있습니다.
-- **main 최신 커밋**: `fdfab0b` — PR [one248802/question-lab#2](https://github.com/one248802/question-lab/pull/2) 병합 커밋 (2026-10-02)
+- **main 최신 커밋**: `64f5fd8` — PR [one248802/question-lab#4](https://github.com/one248802/question-lab/pull/4) 병합 커밋 (2026-10-02)
 - **작업 방식**: 작업마다 **최신 `main`에서 새 브랜치**를 만들고, PR로 `main`에 병합합니다.
   ```bash
   git fetch origin && git checkout -b <새 브랜치> origin/main
@@ -35,6 +35,10 @@
   | --- | --- | --- |
   | [one248802/question-lab#1](https://github.com/one248802/question-lab/pull/1) | 초기 구현 (구버전 migration) | GitHub에서는 closed로 보이지만 병합 커밋 `08a28ca`가 main에 있음 |
   | [one248802/question-lab#2](https://github.com/one248802/question-lab/pull/2) | 최신 스키마(투표 설정·분류 체계), 실제 Supabase 검증, 테스트 도구 | ✅ 병합 (`fdfab0b`) |
+  | [one248802/question-lab#3](https://github.com/one248802/question-lab/pull/3) | PROJECT_STATUS.md 갱신 | ✅ 병합 (`f76ed3b`) |
+  | [one248802/question-lab#4](https://github.com/one248802/question-lab/pull/4) | 교사 질문 삭제, 학급 투표 초기화 (migration `20261002120000`) | ✅ 병합 (`64f5fd8`) |
+  | (PR A, 작업 중) | 질문 분류 활동: 테이블·RLS·학생 RPC, 교사 화면, 학생 tap-to-move 분류 화면 (migration `20261002150000`) | 브랜치 `claude/classification-activity-a` |
+  | (PR B, 예정) | 분류 화면 drag & drop(dnd-kit), 분류 결과 PNG 저장 | PR A 병합 후 새 브랜치 |
 
 - **PR #2에 들어간 주요 커밋**
 
@@ -95,17 +99,19 @@
 - **교사** (`/teacher/settings`): 학급마다 상태 설명과 [투표 시작 / 투표 종료 / 투표 다시 열기] 버튼, 투표 개수 선택, 스위치 4개, [투표 초기화] 버튼
 - **학생** (`/student/board`): "투표가 아직 시작되지 않았어요", "투표 중 · 남은 표 n/N", "투표가 종료되었습니다" 상태 표시. 초과 시 취소 안내. 서버가 거절할 버튼은 미리 비활성화하고 이유를 보여 줌
 
-### 질문 분류 체계 (설계 + 조회 테이블만 있음)
-- 학생은 질문을 등록할 때 유형을 고르지 않습니다. 분류는 나중에 교사가 만드는 "질문 분류 활동"에서 학생이 드래그앤드롭으로 합니다.
-- 조회 테이블: `classification_frameworks`, `classification_categories` (seed 포함, 로그인 사용자 읽기 전용)
-
-  | framework_code | 범주 |
-  | --- | --- |
-  | `inquiry` (A) | factual 사실적 / conceptual 개념적 / debatable 논쟁적 / provocative 호기심 촉발 |
-  | `open_closed` (B) | open 열린 / closed 닫힌 |
-  | `role` (C) | confirm 확인 / clarify 명료화 / deepen 심화 |
-
-- 활동 테이블(`classification_activities`, `classification_activity_questions`, `classification_responses`)은 **migration 9번 섹션에 주석으로 설계만** 있고, 아직 만들지 않았습니다.
+### 질문 분류 활동 (migration `20261002150000_classification_activities.sql`)
+- **교사** (`/teacher/activities`, 메뉴 「질문 분류 활동」): 학급별로 활동을 만들고 수정·삭제·공개합니다.
+  - 활동 = 제목(1~60자) + 분류 영역 이름 2~5개(각 1~20자, 서로 다름) + 이 학급 질문 중 고른 질문(1개 이상)
+  - 만들기·수정은 `save_classification_activity` RPC 한 번으로 저장(제목·영역·질문 선택을 한 트랜잭션으로, 같은 학급 질문만 허용). 새 활동은 비공개로 시작
+  - 학생 공개는 「학생에게 공개」 스위치(`is_open`). **한 반에 여러 활동을 동시에 공개할 수 있습니다.**
+  - 삭제는 확인창 후 활동만 삭제(질문·투표는 그대로)
+- **학생**: 게시판(`/student/board`)의 「분류 활동」 카드에 공개된 활동 목록 → `/student/activity/:id` 분류 화면
+  - 질문 카드는 처음에 「아직 분류하지 않은 질문」에 있고, **카드를 누른 뒤 영역의 「여기에 놓기」를 눌러** 옮깁니다(tap-to-move). 언제든 다른 영역으로 다시 옮길 수 있고 「처음으로」로 되돌립니다.
+  - **분류 결과(배치)는 DB에 저장하지 않습니다.** 새로고침에 대비해 이 탭의 `sessionStorage`에만 두고, 탭을 닫으면 사라집니다. 학생별 기록·집계·통계는 없습니다.
+  - 학생은 테이블에 직접 접근하지 않고 읽기 전용 RPC만 씁니다: `list_open_classification_activities()`, `get_classification_activity(id)` — 우리 반에 공개된 활동만, **질문은 id와 내용만**(작성자·투표 정보 없음), 숨긴 질문은 제외
+- 질문이 삭제되면 활동에서도 빠지고(cascade), 학급을 지우면 활동도 지워집니다. 질문·투표 테이블과 기존 RPC, 통계는 바뀌지 않았습니다.
+- **예정 (PR B)**: drag & drop(dnd-kit), 분류 결과 PNG 저장(학생 번호·이름 포함, 학생 기기에만 저장)
+- 기존 조회 테이블 `classification_frameworks`, `classification_categories`(열린/닫힌, 확인/명료화/심화, 사실적/개념적/논쟁적/호기심 촉발 seed)는 **그대로 두고 쓰지 않습니다**. init migration 9번 섹션의 설계 메모(framework_code, classification_responses)는 이 설계로 대체되었습니다.
 
 ### 보안 설계 요약
 - 교사: RLS로 `classes.teacher_id = auth.uid()`인 학급과 그 학급의 학생·질문·투표만 접근합니다.
@@ -117,8 +123,9 @@
 
 | 항목 | 결과 |
 | --- | --- |
-| `./scripts/test-db.sh` | ✅ 모든 migration을 순서대로(파일마다 단일 트랜잭션) 적용한 뒤, 테스트 파일마다 새 DB 복사본에서 실행. **77/77 통과** |
+| `./scripts/test-db.sh` | ✅ 모든 migration을 순서대로(파일마다 단일 트랜잭션) 적용한 뒤, 테스트 파일마다 새 DB 복사본에서 실행. **121/121 통과** |
 | `supabase/tests/voting_test.sql` | 50개: profiles 트리거, 기본값, before/open/closed 규칙, 상태 전환, max_votes 감소, 자기 투표, 결과 공개 조합, 숨김, 권한 |
+| `supabase/tests/classification_activity_test.sql` | 44개: 활동 만들기/수정 검증(영역 2~5개·이름·중복·제목·질문 필수·다른 학급 질문 거부), 권한(다른 교사·학생·비로그인 불가, 교사도 RPC 외 직접 수정 불가), 공개 전 비노출, 여러 활동 동시 공개, 학생 응답은 제목·영역·질문(id, 내용)만, 숨긴 질문 제외, 다른 반 학생 차단, 질문/활동/학급 삭제 cascade, 질문 수·투표 수·학급 통계 그대로, 결과 저장 테이블 없음 |
 | `supabase/tests/question_delete_reset_test.sql` | 27개: 질문 삭제 권한(학생·다른 교사 불가), 표 cascade 삭제와 표 돌려받기, 학생 목록에서 사라짐, 투표 초기화 권한(학생·다른 교사·비로그인 불가), 학급 표만 삭제, 질문·설정 유지, 다른 학급 영향 없음, 초기화 후 재투표 |
 | `npm run build` | ✅ 통과. 번들 500kB 초과 경고만 있음 |
 | `npm run lint` | 에러 0. **경고 10개는 이번 작업 전부터 있던 것** (`set-state-in-effect`, `only-export-components`) |
@@ -129,8 +136,8 @@
 ### 실제 Supabase 검증 (2026-10-02)
 | 항목 | 결과 |
 | --- | --- |
-| `NODE_USE_ENV_PROXY=1 node scripts/e2e-supabase.mjs` | ✅ **70/70 통과** (질문 삭제·투표 초기화 12개 포함). supabase-js(앱과 같은 라이브러리)로 실제 프로젝트에 요청 |
-| `node scripts/e2e-browser.mjs` (dev 서버 실행 중) | ✅ **44/44 통과** (질문 삭제·투표 초기화 10개 포함, 확인창 취소/확인 모두). 실제 Chromium으로 교사·학생 A·학생 B를 각각 다른 브라우저 세션으로 조작 |
+| `NODE_USE_ENV_PROXY=1 node scripts/e2e-supabase.mjs` | ✅ **87/87 통과** (질문 삭제·투표 초기화 12개, 질문 분류 활동 17개 포함). supabase-js(앱과 같은 라이브러리)로 실제 프로젝트에 요청 |
+| `node scripts/e2e-browser.mjs` (dev 서버 실행 중) | ✅ **60/60 통과** (질문 삭제·투표 초기화 10개, 질문 분류 활동 16개 포함, 확인창 취소/확인 모두). 실제 Chromium으로 교사·학생 A·학생 B를 각각 다른 브라우저 세션으로 조작 |
 
 - 검증한 흐름: 교사 회원가입·로그아웃·로그인 → profiles 자동 생성 → 학급 생성·클래스 코드 → 학생 익명 로그인·입장(틀린 코드, 이름 불일치 거부) → 질문 등록(내용만, 3초 제한, 빈 질문 거부) → 익명성(학생 화면·학생이 받은 응답에 작성자 없음, 학생의 테이블 직접 조회/추가 불가, 내부 함수 호출 불가) → 교사만 작성자 확인 → before/open/closed 규칙과 잘못된 전환 거부 → max_votes(줄여도 기존 표 유지, 초과분 취소) → 자기 질문 투표 → 투표 바꾸기 → 투표 중/종료 후 결과 공개 → 다시 열기 → 질문 숨기기 → 모바일 폭(390px) 가로 스크롤 없음
 - **앱 버그는 발견되지 않았습니다.** 고친 것은 테스트 스크립트(선택자, 투표 응답 대기)와 테스트 환경(아래)뿐입니다.
@@ -152,6 +159,7 @@
 | 네트워크 | `*.supabase.co` 허용 완료. Auth API 200 응답 확인 |
 | **migration** | ✅ **적용 완료 (2026-10-02)**. 현재 main의 `20261001000000_init.sql`을 SQL Editor에서 실행. 그 전에 PR #1 시절 구버전 migration이 실행되어 있어서 `supabase/dev/reset_app_schema.sql`로 앱 객체만 정리한 뒤 다시 적용 |
 | migration `20261002120000_reset_class_votes.sql` | ✅ 적용 완료 (2026-10-02, SQL Editor). 투표 초기화 RPC |
+| migration `20261002150000_classification_activities.sql` | ✅ 적용 완료 (2026-10-02, SQL Editor). 질문 분류 활동 |
 | Anonymous Sign-ins | ✅ 켜져 있음. 실제 익명 로그인으로 학생 입장 확인 |
 | Confirm email | 꺼져 있음 (`mailer_autoconfirm: true`, 가입하면 바로 로그인). 운영 전 결정 필요 |
 | Site URL | 확인하지 않음. 배포 후 Authentication → URL Configuration에서 설정 |
@@ -164,15 +172,15 @@
 
 모든 작업은 최신 `main`에서 새 브랜치를 만들어 시작하고, DB 변경은 **새 migration 파일**로 합니다.
 
-1. 운영 전 Supabase 설정 결정: Confirm email 켤지, Site URL(배포 주소), 테스트 계정 정리
-2. 배포 (vercel.json 있음, 배포 환경 변수 `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` 필요) 후 배포 주소에서 `BASE_URL=<배포 주소> node scripts/e2e-browser.mjs` 로 한 번 더 확인
-3. 작은 미해결 항목 중 필요한 것 선택 (9번)
-4. 2차 기능 착수 (8번). 첫 후보는 질문 분류 활동 (init migration 9번 섹션의 설계 메모 참고, 새 migration 파일로 테이블 추가)
+1. 질문 분류 활동 PR A 마무리 → 병합 후 PR B(drag & drop, PNG 저장)를 새 브랜치에서
+2. 운영 전 Supabase 설정 결정: Confirm email 켤지, Site URL(배포 주소), 테스트 계정 정리
+3. 배포 (vercel.json 있음, 배포 환경 변수 `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` 필요) 후 배포 주소에서 `BASE_URL=<배포 주소> node scripts/e2e-browser.mjs` 로 한 번 더 확인
+4. 작은 미해결 항목 중 필요한 것 선택 (9번)
+5. 나머지 2차 기능 (8번)
 
 ## 8. 아직 구현하지 않은 2차 기능
 
-- 질문 분류 활동 UI (교사가 활동 생성, 분류 체계 1개 선택, 대상 질문 선택)
-- 드래그앤드롭 분류 (학생별 응답 저장, 결과 집계)
+- 질문 분류 활동의 drag & drop, 분류 결과 PNG 저장 (PR B 예정). 학생 분류 결과의 DB 저장·집계는 하지 않기로 결정
 - 질문 키우기
 - 질문 성장 이력
 - 질문 연결
@@ -186,7 +194,7 @@
 
 ## 9. 알려진 주의사항 / 미해결 항목
 
-1. migration은 2026-10-02 실제 Supabase에 적용했고, 실제 환경 API 검증 58개, 브라우저 검증 34개를 통과했습니다. 로컬 stub(`supabase_stub.sql`)은 실제 Supabase를 단순화한 것이라, 새 migration은 로컬 테스트 후 실제 환경 검증 스크립트로도 확인하세요.
+1. migration은 모두 실제 Supabase에 적용했고(2026-10-02), 실제 환경 API 검증 87개, 브라우저 검증 60개를 통과했습니다. 로컬 stub(`supabase_stub.sql`)은 실제 Supabase를 단순화한 것이라, 새 migration은 로컬 테스트 후 실제 환경 검증 스크립트로도 확인하세요.
 2. **`20261001000000_init.sql`은 실제 DB에 적용되었으므로 더 이상 고치지 않습니다.** 변경은 새 migration 파일로 합니다.
 3. 질문 삭제와 투표 초기화는 되돌릴 수 없습니다(확인창만 있음). 삭제된 질문/표를 복구하거나 기록을 남기는 기능은 없습니다.
 4. 투표를 다시 열어도 기존 표는 유지됩니다. 새 라운드가 필요하면 설정 화면의 **투표 초기화**를 씁니다.
@@ -207,6 +215,8 @@
 | --- | --- |
 | `supabase/migrations/20261001000000_init.sql` | 초기 스키마, RLS, RPC, 트리거, 권한. **실제 DB 적용 완료, 수정 금지** |
 | `supabase/migrations/20261002120000_reset_class_votes.sql` | 투표 초기화 RPC `reset_class_votes` |
+| `supabase/migrations/20261002150000_classification_activities.sql` | 질문 분류 활동 테이블 2개, RLS, `save_classification_activity`(교사), `list_open_classification_activities`·`get_classification_activity`(학생) |
+| `supabase/tests/classification_activity_test.sql` | DB 테스트 44개 (질문 분류 활동) |
 | `supabase/tests/voting_test.sql` | DB 테스트 50개 (투표 규칙) |
 | `supabase/tests/question_delete_reset_test.sql` | DB 테스트 27개 (질문 삭제, 투표 초기화) |
 | `supabase/tests/supabase_stub.sql` | 로컬 테스트용 Supabase 흉내 |
@@ -218,6 +228,8 @@
 | `src/lib/types.ts` | `ClassRoom`, `StudentContext`, `VotingStatus` 등 타입 |
 | `src/lib/errors.ts` | RPC 오류 코드 → 한국어 메시지 |
 | `src/pages/student/StudentJoin.tsx`, `StudentBoard.tsx` | 학생 입장, 질문 쓰기 + 게시판 + 투표 |
+| `src/pages/student/StudentActivity.tsx`, `src/components/OpenActivities.tsx` | 학생 분류 화면(tap-to-move, sessionStorage), 게시판의 공개 활동 목록 카드 |
+| `src/pages/teacher/ActivitiesPage.tsx` | 교사 질문 분류 활동 만들기/수정/삭제/공개 |
 | `src/pages/teacher/*` | 교사 로그인, 대시보드, 학급, 질문, 학생, 설정(투표 설정) |
 | `README.md` | 실행 방법, Supabase 설정, 보안 설계, DB 테스트 방법 |
 
@@ -237,9 +249,10 @@
 - 질문은 content 만 등록, 학생에게 작성자 비공개, 교사만 작성자 확인
 - 학급별 투표 설정: voting_status(before/open/closed, 전환은 DB 트리거로 강제), max_votes, allow_self_vote,
   allow_vote_change, show_results_during_voting, show_results_after_voting. 규칙은 toggle_vote RPC 에서 검사
-- 질문 분류 체계 조회 테이블(classification_frameworks/categories)만 있고, 분류 활동 테이블은 init migration 9번에 설계 주석만 있음
+- 질문 분류 활동: 교사가 제목·영역 2~5개·질문을 골라 공개, 학생은 카드를 영역에 배치(결과는 DB 저장 안 함, sessionStorage)
+  기존 classification_frameworks/categories 테이블은 그대로 두고 쓰지 않음
 - 실제 Supabase(https://ogmsfyuhtrljcubuhclq.supabase.co)에 init migration 적용 완료, PR #2 로 main 병합 완료 (2026-10-02)
-- 검증: ./scripts/test-db.sh 77/77, scripts/e2e-supabase.mjs 70/70, scripts/e2e-browser.mjs 44/44,
+- 검증: ./scripts/test-db.sh 121/121, scripts/e2e-supabase.mjs 87/87, scripts/e2e-browser.mjs 60/60,
   npm run build 통과, lint 경고 10개는 기존 것
 
 규칙:

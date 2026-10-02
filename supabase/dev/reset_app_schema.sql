@@ -56,7 +56,10 @@ begin
         'teacher_class_stats', 'regenerate_class_code', 'reset_class_votes',
         -- 학생 RPC
         'join_class', 'get_my_student', 'leave_class', 'list_class_questions',
-        'create_question', 'toggle_vote'
+        'create_question', 'toggle_vote',
+        -- 질문 분류 활동
+        'valid_area_names', 'save_classification_activity',
+        'list_open_classification_activities', 'get_classification_activity'
       )
   loop
     execute format('drop function if exists %s cascade', fn);
@@ -89,14 +92,16 @@ where n.nspname = 'public'
                     'vote_results_visible', 'student_vote_count', 'student_context_json',
                     'teacher_class_stats', 'regenerate_class_code', 'reset_class_votes', 'join_class',
                     'get_my_student', 'leave_class', 'list_class_questions',
-                    'create_question', 'toggle_vote')
+                    'create_question', 'toggle_vote', 'valid_area_names', 'save_classification_activity',
+                    'list_open_classification_activities', 'get_classification_activity')
 union all
 select 'policies', count(*), coalesce(string_agg(tablename || ': ' || policyname, ', '), '')
 from pg_policies
 where schemaname = 'public'
   and tablename in ('question_scopes', 'question_types', 'classification_frameworks',
                     'classification_categories', 'profiles', 'classes', 'students',
-                    'student_sessions', 'questions', 'votes')
+                    'student_sessions', 'questions', 'votes', 'classification_activities',
+                    'classification_activity_questions')
 union all
 select 'auth.users triggers', count(*), coalesce(string_agg(tgname, ', '), '')
 from pg_trigger
