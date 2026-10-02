@@ -13,9 +13,10 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core'
-import { ArrowLeft, Inbox, LayoutGrid, RefreshCw, RotateCcw } from 'lucide-react'
+import { ArrowLeft, ImageDown, Inbox, LayoutGrid, RefreshCw, RotateCcw } from 'lucide-react'
 import { Button, ErrorBox, EmptyState, Spinner, cx } from '../../components/ui'
 import { useAuth } from '../../contexts/AuthContext'
+import { classificationFileName, renderClassificationPng, savePngOnDevice } from '../../lib/classificationPng'
 import { toMessage } from '../../lib/errors'
 import { supabase } from '../../lib/supabase'
 import type { ActivityForStudent, StudentContext } from '../../lib/types'
@@ -89,6 +90,8 @@ export default function StudentActivity() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
 
   const apply = useCallback(([ctx, act]: Awaited<ReturnType<typeof fetchActivity>>) => {
     if (!ctx.data) {
@@ -163,6 +166,34 @@ export default function StudentActivity() {
     setSelectedId(null)
   }
 
+  // 분류 결과 PNG: 학생 기기에만 저장 (서버 업로드 없음, 분류 결과는 DB 에 저장하지 않음)
+  const savePng = async () => {
+    if (!me || !activity) return
+    setSaving(true)
+    setError(null)
+    setNotice(null)
+    try {
+      const data = {
+        title: activity.title,
+        className: me.class_name,
+        studentNumber: me.student_number,
+        studentName: me.student_name,
+        date: new Date(),
+        areas: activity.area_names.map((name, i) => ({
+          name,
+          questions: activity.questions.filter((q) => placement[q.id] === i).map((q) => q.content),
+        })),
+        unsorted: activity.questions.filter((q) => (placement[q.id] ?? null) === null).map((q) => q.content),
+      }
+      const result = await savePngOnDevice(await renderClassificationPng(data), classificationFileName(data))
+      if (result === 'downloaded') setNotice('분류 결과 PNG를 이 기기에 저장했어요.')
+      else if (result === 'shared') setNotice('분류 결과 PNG를 만들었어요.')
+    } catch {
+      setError('PNG를 만들지 못했어요. 다시 시도해 주세요.')
+    }
+    setSaving(false)
+  }
+
   const refresh = async () => {
     setRefreshing(true)
     apply(await fetchActivity(activityId))
@@ -208,6 +239,12 @@ export default function StudentActivity() {
                 {activity.title}
               </h1>
               <div className="flex flex-wrap gap-2">
+                {activity.questions.length > 0 && (
+                  <Button variant="mint" size="sm" onClick={savePng} loading={saving}>
+                    {!saving && <ImageDown className="size-5" aria-hidden />}
+                    분류 결과 PNG로 저장
+                  </Button>
+                )}
                 <Button variant="secondary" size="sm" onClick={resetAll}>
                   <RotateCcw className="size-5" aria-hidden />
                   처음으로
@@ -223,6 +260,11 @@ export default function StudentActivity() {
                 : '질문 카드를 끌어서 영역에 놓거나, 카드를 누른 다음 옮길 영역을 고르세요.'}
             </p>
             <ErrorBox message={error} />
+            {notice && (
+              <p role="status" className="rounded-2xl border-2 border-[#6fc9a4] bg-mint-soft px-4 py-3 text-lg font-bold text-mint-ink">
+                {notice}
+              </p>
+            )}
 
             {activity.questions.length === 0 ? (
               <EmptyState icon={<Inbox className="size-14" />} title="분류할 질문이 없어요" />
@@ -267,7 +309,9 @@ export default function StudentActivity() {
                 </DragOverlay>
               </DndContext>
             )}
-            <p className="text-sm text-ink-soft">분류 결과는 저장되지 않아요. 이 탭을 닫으면 사라져요.</p>
+            <p className="text-sm text-ink-soft">
+              분류 결과는 서버에 저장되지 않아요. 이 탭을 닫으면 사라지니, 필요하면 「분류 결과 PNG로 저장」으로 내 기기에 저장하세요.
+            </p>
           </>
         )}
       </main>

@@ -112,7 +112,7 @@
 - 질문이 삭제되면 활동에서도 빠지고(cascade), 학급을 지우면 활동도 지워집니다. 질문·투표 테이블과 기존 RPC, 통계는 바뀌지 않았습니다.
 - **PR B (작업 중, 브랜치 `claude/classification-activity-b`, DB/migration 변경 없음)**
   - ✅ drag & drop (`@dnd-kit/core`): 카드를 끌어 영역에 놓기. 마우스는 6px 움직이면, 터치는 0.2초 길게 누르면 끌기 시작(짧게 누르면 기존 tap-to-move 선택, 밀면 스크롤). tap-to-move 는 그대로 fallback 으로 유지하고 둘 다 같은 `moveCard` → 같은 placement / sessionStorage 사용. 화면 읽기 안내는 한국어로 「카드 선택 → 여기에 놓기」 방법을 안내(키보드 끌기는 쓰지 않음)
-  - ⏳ 분류 결과 PNG 저장: Canvas 2D 로 직접 그리기(활동 제목, 학급명, 학생 번호·이름, 날짜, 영역별 질문, 미분류 질문), 학생 기기에만 저장(다운로드 또는 모바일 공유 시트), Supabase Storage·서버 업로드 없음
+  - ✅ 분류 결과 PNG 저장 (`src/lib/classificationPng.ts`): 화면 캡처가 아니라 Canvas 2D 로 직접 그림 — 활동 제목, 학급명, 학생 번호·이름, 날짜, 영역별 질문, 미분류 질문. 너비 1600px × 2배(휴대폰 캔버스 한도 1,600만 픽셀 안으로 자동 축소). 웹 글꼴(Jua, Noto Sans KR)을 필요한 글자만큼 미리 불러옴. 저장은 학생 기기에만: 컴퓨터는 파일 다운로드, 터치 기기에서 파일 공유를 지원하면 공유 화면(사진에 저장 등), 실패하면 다운로드. Supabase Storage·서버 업로드 없음. 파일 이름 `질문분류_제목_3번_이름_2026-10-02.png`
   - ⏳ 브라우저 테스트(마우스 끌기, 터치 길게 눌러 끌기, PNG 다운로드 검증)
 - 기존 조회 테이블 `classification_frameworks`, `classification_categories`(열린/닫힌, 확인/명료화/심화, 사실적/개념적/논쟁적/호기심 촉발 seed)는 **그대로 두고 쓰지 않습니다**. init migration 9번 섹션의 설계 메모(framework_code, classification_responses)는 이 설계로 대체되었습니다.
 
