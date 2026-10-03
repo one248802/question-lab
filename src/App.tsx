@@ -8,6 +8,7 @@ import { isSupabaseConfigured } from './lib/supabase'
 import Home from './pages/Home'
 import StudentBoard from './pages/student/StudentBoard'
 import StudentJoin from './pages/student/StudentJoin'
+import StudentMyQuestions from './pages/student/StudentMyQuestions'
 import ActivitiesPage from './pages/teacher/ActivitiesPage'
 import ClassesPage from './pages/teacher/ClassesPage'
 import Dashboard from './pages/teacher/Dashboard'
@@ -43,6 +44,7 @@ export default function App() {
 
             <Route path="/student" element={<StudentJoin />} />
             <Route path="/student/board" element={<StudentBoard />} />
+            <Route path="/student/my-questions" element={<StudentMyQuestions />} />
             <Route
               path="/student/activity/:activityId"
               element={
