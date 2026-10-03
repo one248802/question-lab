@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Heart, Inbox, LogOut, RefreshCw, UserRound } from 'lucide-react'
+import { Heart, Inbox, LogOut, NotebookTabs, RefreshCw, UserRound } from 'lucide-react'
 import { ConnectionRetry } from '../../components/ConnectionRetry'
 import { OpenActivities } from '../../components/OpenActivities'
 import { QuestionComposer } from '../../components/QuestionComposer'
@@ -179,6 +179,10 @@ export default function StudentBoard() {
       <main className="mx-auto grid max-w-[90rem] gap-6 px-4 py-6 lg:grid-cols-[22rem_1fr] lg:items-start">
         <div className="flex flex-col gap-6 lg:sticky lg:top-24">
           <QuestionComposer onSubmit={submitQuestion} />
+          <Button variant="sky" block onClick={() => navigate('/student/my-questions')}>
+            <NotebookTabs className="size-5" aria-hidden />
+            내 질문 모아보기
+          </Button>
           <OpenActivities />
         </div>
 
@@ -218,33 +222,33 @@ export default function StudentBoard() {
               {sorted.map((q) => {
                 const blocked = voteBlockedReason(q)
                 return (
-                <li key={q.id} className="flex min-w-0 flex-col gap-4 rounded-3xl border-2 border-line bg-paper p-5 shadow-pop">
-                  {q.is_mine && (
-                    <span className="self-start rounded-full bg-butter-soft px-2 py-1 text-sm font-bold text-butter-ink">내 질문</span>
-                  )}
-                  <p className="text-xl leading-relaxed font-medium break-words whitespace-pre-wrap">{q.content}</p>
-                  <div className="mt-auto flex items-center justify-between gap-3">
-                    <span className="text-sm text-ink-soft">익명의 질문 · {timeAgo(q.created_at)}</span>
-                    <button
-                      type="button"
-                      onClick={() => toggleVote(q)}
-                      disabled={blocked !== null}
-                      title={blocked ?? undefined}
-                      aria-pressed={q.voted_by_me}
-                      aria-label={q.voted_by_me ? '투표 취소' : '투표하기'}
-                      className={cx(
-                        'inline-flex min-h-12 items-center gap-2 rounded-2xl border-2 px-4 text-lg font-bold transition active:scale-95',
-                        'disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100',
-                        q.voted_by_me
-                          ? 'border-pink bg-pink-soft text-pink-ink shadow-pop-sm'
-                          : 'border-line-strong bg-paper text-ink-soft enabled:hover:border-pink',
-                      )}
-                    >
-                      <Heart className={cx('size-6', q.voted_by_me && 'fill-current')} aria-hidden />
-                      {q.vote_count !== null ? q.vote_count : q.voted_by_me ? '투표함' : '투표'}
-                    </button>
-                  </div>
-                </li>
+                  <li key={q.id} className="flex min-w-0 flex-col gap-4 rounded-3xl border-2 border-line bg-paper p-5 shadow-pop">
+                    {q.is_mine && (
+                      <span className="self-start rounded-full bg-butter-soft px-2 py-1 text-sm font-bold text-butter-ink">내 질문</span>
+                    )}
+                    <p className="text-xl leading-relaxed font-medium break-words whitespace-pre-wrap">{q.content}</p>
+                    <div className="mt-auto flex items-center justify-between gap-3">
+                      <span className="text-sm text-ink-soft">익명의 질문 · {timeAgo(q.created_at)}</span>
+                      <button
+                        type="button"
+                        onClick={() => toggleVote(q)}
+                        disabled={blocked !== null}
+                        title={blocked ?? undefined}
+                        aria-pressed={q.voted_by_me}
+                        aria-label={q.voted_by_me ? '투표 취소' : '투표하기'}
+                        className={cx(
+                          'inline-flex min-h-12 items-center gap-2 rounded-2xl border-2 px-4 text-lg font-bold transition active:scale-95',
+                          'disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100',
+                          q.voted_by_me
+                            ? 'border-pink bg-pink-soft text-pink-ink shadow-pop-sm'
+                            : 'border-line-strong bg-paper text-ink-soft enabled:hover:border-pink',
+                        )}
+                      >
+                        <Heart className={cx('size-6', q.voted_by_me && 'fill-current')} aria-hidden />
+                        {q.vote_count !== null ? q.vote_count : q.voted_by_me ? '투표함' : '투표'}
+                      </button>
+                    </div>
+                  </li>
                 )
               })}
             </ul>
