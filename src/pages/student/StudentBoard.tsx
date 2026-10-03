@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Heart, Inbox, LogOut, MessageSquareText, NotebookTabs, RefreshCw, UserRound, X } from 'lucide-react'
+import { CalendarDays, Heart, Inbox, LogOut, MessageSquareText, NotebookTabs, RefreshCw, UserRound, X } from 'lucide-react'
 import { ConnectionRetry } from '../../components/ConnectionRetry'
 import { OpenActivities } from '../../components/OpenActivities'
 import { QuestionComposer } from '../../components/QuestionComposer'
@@ -222,6 +222,9 @@ export default function StudentBoard() {
           <QuestionComposer onSubmit={submitQuestion} />
           <Button variant="sky" block onClick={() => navigate('/student/my-questions')}>
             <NotebookTabs className="size-5" aria-hidden />내 질문 모아보기
+          </Button>
+          <Button variant="secondary" block onClick={() => navigate('/student/question-gallery')}>
+            <CalendarDays className="size-5" aria-hidden />지난 질문 갤러리
           </Button>
           <OpenActivities />
           {me.thought_sharing_enabled && (
