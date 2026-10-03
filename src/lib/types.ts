@@ -85,6 +85,16 @@ export interface BoardQuestion {
   thought_count: number
 }
 
+export interface QuestionGalleryItem {
+  id: string
+  content: string
+  created_at: string
+  is_mine: boolean
+  is_current: boolean
+  vote_count: number | null
+  thought_count: number
+}
+
 export interface QuestionThought {
   id: string
   content: string
@@ -177,6 +187,7 @@ export interface ThoughtItem {
   id: string
   content: string
   is_mine: boolean
+  is_teacher_candidate: boolean
   voted_by_me: boolean
   vote_count: number | null
   created_at: string
@@ -188,6 +199,8 @@ export interface ThoughtTopicDetail {
   is_open: boolean
   results_visible: boolean
   max_votes: number
+  max_items_per_student: number
+  my_item_count: number
   my_vote_count: number
   items: ThoughtItem[]
 }
