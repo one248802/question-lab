@@ -9,13 +9,25 @@ import { supabase } from '../../lib/supabase'
 // forgot: 비밀번호 재설정 메일 받기
 type Mode = 'login' | 'signup' | 'forgot'
 
+const REMEMBERED_EMAIL_KEY = 'question-lab:teacher-email'
+
+function getRememberedEmail() {
+  try {
+    return window.localStorage.getItem(REMEMBERED_EMAIL_KEY) ?? ''
+  } catch {
+    return ''
+  }
+}
+
 export default function TeacherLogin() {
   const navigate = useNavigate()
   const { user, isAnonymous, loading } = useAuth()
   // 재설정 링크가 만료돼 다시 받으러 온 경우 바로 메일 받기 화면으로
   const initialMode = (useLocation().state as { mode?: Mode } | null)?.mode === 'forgot' ? 'forgot' : 'login'
+  const rememberedEmail = getRememberedEmail()
   const [mode, setMode] = useState<Mode>(initialMode)
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState(rememberedEmail)
+  const [rememberEmail, setRememberEmail] = useState(Boolean(rememberedEmail))
   const [password, setPassword] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -31,24 +43,35 @@ export default function TeacherLogin() {
     setInfo(null)
   }
 
+  const saveRememberedEmail = (value: string) => {
+    try {
+      if (rememberEmail) window.localStorage.setItem(REMEMBERED_EMAIL_KEY, value)
+      else window.localStorage.removeItem(REMEMBERED_EMAIL_KEY)
+    } catch {
+      // 브라우저 저장소가 막혀 있어도 로그인 자체는 그대로 진행합니다.
+    }
+  }
+
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setError(null)
     setInfo(null)
     if (mode === 'forgot') return sendResetMail()
-    if (!email.trim() || !password) return setError('이메일과 비밀번호를 넣어 주세요.')
+    const trimmedEmail = email.trim()
+    if (!trimmedEmail || !password) return setError('이메일과 비밀번호를 넣어 주세요.')
     setSubmitting(true)
     try {
       // 학생(익명)으로 들어와 있던 기기라면 먼저 로그아웃
       if (user && isAnonymous) await supabase.auth.signOut()
 
       if (mode === 'login') {
-        const { error: err } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
+        const { error: err } = await supabase.auth.signInWithPassword({ email: trimmedEmail, password })
         if (err) throw err
+        saveRememberedEmail(trimmedEmail)
         navigate('/teacher', { replace: true })
       } else {
         const { data, error: err } = await supabase.auth.signUp({
-          email: email.trim(),
+          email: trimmedEmail,
           password,
           options: {
             data: { display_name: displayName.trim() || null },
@@ -138,9 +161,20 @@ export default function TeacherLogin() {
                 placeholder={mode === 'signup' ? '6자 이상' : ''}
               />
               {mode === 'login' && (
-                <button type="button" onClick={() => switchMode('forgot')} className="mt-2 text-base font-bold text-sky-ink underline-offset-4 hover:underline">
-                  비밀번호를 잊으셨나요?
-                </button>
+                <div className="mt-2 flex items-center justify-between gap-3">
+                  <label className="inline-flex cursor-pointer items-center gap-2 text-base font-bold text-ink-soft">
+                    <input
+                      type="checkbox"
+                      checked={rememberEmail}
+                      onChange={(e) => setRememberEmail(e.target.checked)}
+                      className="size-5 rounded accent-[#7fb6ec]"
+                    />
+                    이메일 저장
+                  </label>
+                  <button type="button" onClick={() => switchMode('forgot')} className="text-base font-bold text-sky-ink underline-offset-4 hover:underline">
+                    비밀번호를 잊으셨나요?
+                  </button>
+                </div>
               )}
             </div>
           )}
