@@ -40,12 +40,12 @@ const STATUS_META: Record<QuestionTopicStatus, { label: string; description: str
   },
   archived: {
     label: '보관',
-    description: '작성 종료, 기록 유지',
+    description: '우리반 질문 모아보기에 보관',
     className: 'bg-sky-soft text-sky-ink',
   },
   hidden: {
     label: '숨김',
-    description: '학생에게 완전히 숨김',
+    description: '교사만 보기, 우리반 질문에 표시되지 않음',
     className: 'bg-line text-ink-soft',
   },
 }
@@ -69,7 +69,7 @@ export default function QuestionsPage() {
   const [sort, setSort] = useState<Sort>('new')
   const [dateFilter, setDateFilter] = useState<DateFilter>('all')
   const [pickedDate, setPickedDate] = useState(() => localDateKey(new Date()))
-  const [topicFilter, setTopicFilter] = useState<string | null>(null)
+  const [selectedTopicIds, setSelectedTopicIds] = useState<Set<string>>(() => new Set())
   const [newTopicName, setNewTopicName] = useState('')
   const [topicBusy, setTopicBusy] = useState<string | null>(null)
   const [creatingTopic, setCreatingTopic] = useState(false)
@@ -126,7 +126,7 @@ export default function QuestionsPage() {
 
   useEffect(() => {
     setLoading(true)
-    setTopicFilter(null)
+    setSelectedTopicIds(new Set())
     load()
     const timer = window.setInterval(() => {
       if (document.visibilityState === 'visible') load()
@@ -134,7 +134,15 @@ export default function QuestionsPage() {
     return () => window.clearInterval(timer)
   }, [load])
 
-  const currentTopic = topics.find((topic) => topic.id === topicFilter) ?? null
+  useEffect(() => {
+    const validIds = new Set(topics.map((topic) => topic.id))
+    setSelectedTopicIds((current) => new Set([...current].filter((id) => validIds.has(id))))
+  }, [topics])
+
+  const selectedTopics = useMemo(
+    () => topics.filter((topic) => selectedTopicIds.has(topic.id)),
+    [topics, selectedTopicIds],
+  )
   const topicNames = useMemo(() => new Map(topics.map((topic) => [topic.id, topic.name])), [topics])
   const topicCounts = useMemo(() => {
     const counts = new Map<string, number>()
@@ -146,7 +154,8 @@ export default function QuestionsPage() {
   }, [questions])
 
   const shown = useMemo(() => {
-    let list = questions
+    if (selectedTopicIds.size === 0) return []
+    let list = questions.filter((q) => Boolean(q.topic_id && selectedTopicIds.has(q.topic_id)))
     if (dateFilter === 'today') {
       list = list.filter((q) => localDateKey(q.created_at) === todayKey)
     } else if (dateFilter === 'week') {
@@ -155,16 +164,24 @@ export default function QuestionsPage() {
     } else if (dateFilter === 'date' && pickedDate) {
       list = list.filter((q) => localDateKey(q.created_at) === pickedDate)
     }
-    if (currentTopic) list = list.filter((q) => q.topic_id === currentTopic.id)
     if (visibility === 'visible') list = list.filter((q) => !q.is_hidden)
     if (visibility === 'hidden') list = list.filter((q) => q.is_hidden)
     if (sort === 'votes') list = [...list].sort((a, b) => b.vote_count - a.vote_count)
     return list
-  }, [questions, dateFilter, todayKey, now, pickedDate, currentTopic, visibility, sort])
+  }, [questions, selectedTopicIds, dateFilter, todayKey, now, pickedDate, visibility, sort])
 
   const flash = (message: string) => {
     setNotice(message)
     window.setTimeout(() => setNotice((current) => (current === message ? null : current)), 2500)
+  }
+
+  const toggleTopicSelection = (topicId: string) => {
+    setSelectedTopicIds((current) => {
+      const next = new Set(current)
+      if (next.has(topicId)) next.delete(topicId)
+      else next.add(topicId)
+      return next
+    })
   }
 
   const createTopic = async () => {
@@ -228,7 +245,11 @@ export default function QuestionsPage() {
     setTopicBusy(null)
     if (err) return setError(topicError(err))
 
-    if (topicFilter === topic.id) setTopicFilter(null)
+    setSelectedTopicIds((current) => {
+      const next = new Set(current)
+      next.delete(topic.id)
+      return next
+    })
     flash(`「${topic.name}」 주제와 질문 기록 ${Number(data ?? 0)}개를 삭제했어요.`)
     await Promise.all([load(), reloadStats()])
   }
@@ -262,6 +283,13 @@ export default function QuestionsPage() {
 
   if (classesLoading) return <Spinner />
 
+  const questionSectionTitle =
+    selectedTopics.length === 0
+      ? '질문 주제를 선택해 주세요'
+      : selectedTopics.length === 1
+        ? `「${selectedTopics[0].name}」 질문`
+        : `선택한 질문 주제 ${selectedTopics.length}개`
+
   return (
     <>
       <PageTitle
@@ -284,9 +312,9 @@ export default function QuestionsPage() {
       ) : (
         <div className="@container flex flex-col gap-5">
           <section className="rounded-3xl border-2 border-line bg-paper p-4 shadow-pop sm:p-5">
-            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-              <h2 className="font-display text-2xl sm:text-3xl">질문 주제 관리</h2>
-              <div className="flex w-full gap-2 sm:w-auto">
+            <div className="mb-4 flex flex-wrap items-center gap-4">
+              <h2 className="shrink-0 font-display text-2xl sm:text-3xl">질문 주제 관리</h2>
+              <div className="ml-auto flex w-full gap-2 lg:w-[44rem]">
                 <Input
                   value={newTopicName}
                   onChange={(e) => setNewTopicName(e.target.value.slice(0, 40))}
@@ -295,9 +323,9 @@ export default function QuestionsPage() {
                   }}
                   placeholder="새 질문 주제"
                   aria-label="새 질문 주제"
-                  className="min-w-0 sm:w-64"
+                  className="min-w-0 flex-1"
                 />
-                <Button variant="sky" onClick={createTopic} loading={creatingTopic} disabled={!newTopicName.trim()}>
+                <Button variant="sky" onClick={createTopic} loading={creatingTopic} disabled={!newTopicName.trim()} className="shrink-0">
                   {!creatingTopic && <Plus className="size-5" aria-hidden />}
                   주제 만들기
                 </Button>
@@ -306,8 +334,8 @@ export default function QuestionsPage() {
 
             <div className="mb-4 grid gap-2 text-sm text-ink-soft sm:grid-cols-2 lg:grid-cols-4">
               <p className="rounded-2xl bg-mint-soft px-3 py-2"><strong className="text-mint-ink">진행 중</strong> · 현재 학생 활동용</p>
-              <p className="rounded-2xl bg-sky-soft px-3 py-2"><strong className="text-sky-ink">보관</strong> · 작성 종료, 기록 유지</p>
-              <p className="rounded-2xl bg-cream px-3 py-2"><strong className="text-ink">숨김</strong> · 학생에게 완전히 숨김</p>
+              <p className="rounded-2xl bg-sky-soft px-3 py-2"><strong className="text-sky-ink">보관</strong> · 우리반 질문 모아보기에 보관</p>
+              <p className="rounded-2xl bg-cream px-3 py-2"><strong className="text-ink">숨김</strong> · 교사만 보기, 우리반 질문에 표시되지 않음</p>
               <p className="rounded-2xl bg-pink-soft px-3 py-2"><strong className="text-pink-ink">삭제</strong> · 주제와 관련 기록 삭제</p>
             </div>
 
@@ -319,7 +347,7 @@ export default function QuestionsPage() {
                   {topics.map((topic) => {
                     const busy = topicBusy === topic.id
                     const meta = STATUS_META[topic.status]
-                    const selectedTopic = topicFilter === topic.id
+                    const selectedTopic = selectedTopicIds.has(topic.id)
                     return (
                       <li
                         key={topic.id}
@@ -328,21 +356,29 @@ export default function QuestionsPage() {
                           selectedTopic ? 'bg-sky-soft/60' : 'hover:bg-paper/70',
                         )}
                       >
-                        <button
-                          type="button"
-                          onClick={() => setTopicFilter(selectedTopic ? null : topic.id)}
-                          className="flex min-w-0 flex-1 items-center gap-2 rounded-xl px-2 py-2 text-left hover:bg-sky-soft/50 focus:outline-none focus:ring-2 focus:ring-sky"
-                          aria-pressed={selectedTopic}
-                          aria-label={`${topic.name} 질문 ${topicCounts.get(topic.id) ?? 0}개 보기`}
-                        >
+                        <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-xl px-2 py-2 hover:bg-sky-soft/50">
+                          <input
+                            type="checkbox"
+                            checked={selectedTopic}
+                            onChange={() => toggleTopicSelection(topic.id)}
+                            className="size-5 shrink-0 accent-[#7fb6ec]"
+                            aria-label={`${topic.name} 질문 보기`}
+                          />
                           <span className="truncate text-lg font-bold">{topic.name}</span>
                           <Badge className={meta.className}>{meta.label}</Badge>
                           <span className="shrink-0 text-sm text-ink-soft">질문 {topicCounts.get(topic.id) ?? 0}개</span>
-                        </button>
+                        </label>
 
-                        <Button variant="ghost" size="sm" onClick={() => renameTopic(topic)} disabled={busy} className="shrink-0">
-                          <Pencil className="size-4" aria-hidden />이름 수정
-                        </Button>
+                        <button
+                          type="button"
+                          onClick={() => renameTopic(topic)}
+                          disabled={busy}
+                          className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl text-ink-soft transition hover:bg-ink/5 hover:text-ink disabled:opacity-40"
+                          aria-label={`${topic.name} 이름 수정`}
+                          title="이름 수정"
+                        >
+                          <Pencil className="size-5" aria-hidden />
+                        </button>
 
                         <div className="flex shrink-0 flex-nowrap items-center gap-2 overflow-x-auto">
                           <Button size="sm" variant={topic.status === 'active' ? 'mint' : 'secondary'} onClick={() => changeTopicStatus(topic, 'active')} disabled={busy || topic.status === 'active'}>
@@ -367,67 +403,80 @@ export default function QuestionsPage() {
           </section>
 
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="font-display text-2xl sm:text-3xl">{currentTopic ? `「${currentTopic.name}」 질문` : '전체 질문'}</h2>
-            {currentTopic && (
-              <Button size="sm" variant="secondary" onClick={() => setTopicFilter(null)}>
-                전체 질문 보기
-              </Button>
-            )}
+            <h2 className="font-display text-2xl sm:text-3xl">{questionSectionTitle}</h2>
+            <div className="flex flex-wrap gap-2">
+              {topics.length > 0 && selectedTopicIds.size < topics.length && (
+                <Button size="sm" variant="secondary" onClick={() => setSelectedTopicIds(new Set(topics.map((topic) => topic.id)))}>
+                  전체 질문 보기
+                </Button>
+              )}
+              {selectedTopicIds.size > 0 && (
+                <Button size="sm" variant="ghost" onClick={() => setSelectedTopicIds(new Set())}>
+                  선택 해제
+                </Button>
+              )}
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <ChoiceChips<Visibility>
-              size="sm"
-              options={[
-                { value: 'all', label: '모두' },
-                { value: 'visible', label: '공개' },
-                { value: 'hidden', label: '숨김 질문' },
-              ]}
-              value={visibility}
-              onChange={setVisibility}
-            />
-            <span className="hidden h-8 w-0.5 bg-line sm:block" />
-            <ChoiceChips<Sort>
-              size="sm"
-              options={[
-                { value: 'new', label: '최신순' },
-                { value: 'votes', label: '투표순' },
-              ]}
-              value={sort}
-              onChange={setSort}
-            />
-          </div>
+          {selectedTopicIds.size > 0 && (
+            <>
+              <div className="flex flex-wrap items-center gap-3">
+                <ChoiceChips<Visibility>
+                  size="sm"
+                  options={[
+                    { value: 'all', label: '모두' },
+                    { value: 'visible', label: '공개' },
+                    { value: 'hidden', label: '숨김 질문' },
+                  ]}
+                  value={visibility}
+                  onChange={setVisibility}
+                />
+                <span className="hidden h-8 w-0.5 bg-line sm:block" />
+                <ChoiceChips<Sort>
+                  size="sm"
+                  options={[
+                    { value: 'new', label: '최신순' },
+                    { value: 'votes', label: '투표순' },
+                  ]}
+                  value={sort}
+                  onChange={setSort}
+                />
+              </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="mr-1 text-base font-bold text-ink-soft">날짜</span>
-            <ChoiceChips<DateFilter>
-              size="sm"
-              options={[
-                { value: 'all', label: '전체' },
-                { value: 'today', label: '오늘' },
-                { value: 'week', label: '이번 주' },
-                { value: 'date', label: '날짜 선택' },
-              ]}
-              value={dateFilter}
-              onChange={setDateFilter}
-            />
-            {dateFilter === 'date' && (
-              <Input
-                type="date"
-                value={pickedDate}
-                max={todayKey}
-                onChange={(e) => setPickedDate(e.target.value)}
-                aria-label="질문 날짜"
-                className="min-h-10 w-auto text-base"
-              />
-            )}
-          </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="mr-1 text-base font-bold text-ink-soft">날짜</span>
+                <ChoiceChips<DateFilter>
+                  size="sm"
+                  options={[
+                    { value: 'all', label: '전체' },
+                    { value: 'today', label: '오늘' },
+                    { value: 'week', label: '이번 주' },
+                    { value: 'date', label: '날짜 선택' },
+                  ]}
+                  value={dateFilter}
+                  onChange={setDateFilter}
+                />
+                {dateFilter === 'date' && (
+                  <Input
+                    type="date"
+                    value={pickedDate}
+                    max={todayKey}
+                    onChange={(e) => setPickedDate(e.target.value)}
+                    aria-label="질문 날짜"
+                    className="min-h-10 w-auto text-base"
+                  />
+                )}
+              </div>
+            </>
+          )}
 
           <ErrorBox message={error} />
           {notice && <p className="rounded-2xl bg-mint-soft px-4 py-3 text-lg font-bold text-mint-ink" role="status">{notice}</p>}
 
           {loading ? (
             <Spinner />
+          ) : selectedTopicIds.size === 0 ? (
+            <EmptyState icon={<Inbox className="size-14" />} title="위에서 질문 주제를 선택해 주세요" />
           ) : shown.length === 0 ? (
             <EmptyState icon={<Inbox className="size-14" />} title={questions.length === 0 ? '질문이 없어요' : '조건에 맞는 질문이 없어요'} />
           ) : (
