@@ -35,17 +35,17 @@ interface Row extends Omit<TeacherQuestion, 'vote_count'> {
 const STATUS_META: Record<QuestionTopicStatus, { label: string; description: string; className: string }> = {
   active: {
     label: '진행 중',
-    description: '학생이 현재 참여하는 질문 주제',
+    description: '현재 학생 활동용',
     className: 'bg-mint-soft text-mint-ink',
   },
   archived: {
     label: '보관',
-    description: '새 질문 작성은 끝났지만 기록은 남기는 주제',
+    description: '작성 종료, 기록 유지',
     className: 'bg-sky-soft text-sky-ink',
   },
   hidden: {
     label: '숨김',
-    description: '학생에게는 보이지 않고 교사만 확인하는 주제',
+    description: '학생에게 완전히 숨김',
     className: 'bg-line text-ink-soft',
   },
 }
@@ -219,7 +219,7 @@ export default function QuestionsPage() {
     )
     if (!ok) return
 
-    const confirmAgain = window.confirm('정말로 주제와 기록을 모두 삭제할까요? 이 작업은 되돌릴 수 없습니다.')
+    const confirmAgain = window.confirm('정말로 삭제할까요? 이 주제의 질문과 기록은 되돌릴 수 없습니다.')
     if (!confirmAgain) return
 
     setTopicBusy(topic.id)
@@ -285,11 +285,7 @@ export default function QuestionsPage() {
         <div className="@container flex flex-col gap-5">
           <section className="rounded-3xl border-2 border-line bg-paper p-4 shadow-pop sm:p-5">
             <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 className="font-display text-2xl sm:text-3xl">질문 주제 관리</h2>
-                <p className="mt-1 text-base text-ink-soft">질문을 나중에 폴더로 옮기지 않고, 먼저 주제를 만든 뒤 상태를 관리합니다.</p>
-                <p className="mt-1 text-sm font-bold text-sky-ink">주제 이름을 누르면 아래에서 그 주제의 질문만 볼 수 있어요.</p>
-              </div>
+              <h2 className="font-display text-2xl sm:text-3xl">질문 주제 관리</h2>
               <div className="flex w-full gap-2 sm:w-auto">
                 <Input
                   value={newTopicName}
@@ -308,77 +304,70 @@ export default function QuestionsPage() {
               </div>
             </div>
 
-            <div className="mb-4 grid gap-2 text-sm text-ink-soft sm:grid-cols-3">
+            <div className="mb-4 grid gap-2 text-sm text-ink-soft sm:grid-cols-2 lg:grid-cols-4">
               <p className="rounded-2xl bg-mint-soft px-3 py-2"><strong className="text-mint-ink">진행 중</strong> · 현재 학생 활동용</p>
               <p className="rounded-2xl bg-sky-soft px-3 py-2"><strong className="text-sky-ink">보관</strong> · 작성 종료, 기록 유지</p>
               <p className="rounded-2xl bg-cream px-3 py-2"><strong className="text-ink">숨김</strong> · 학생에게 완전히 숨김</p>
+              <p className="rounded-2xl bg-pink-soft px-3 py-2"><strong className="text-pink-ink">삭제</strong> · 주제와 관련 기록 삭제</p>
             </div>
 
             {topics.length === 0 ? (
               <p className="rounded-2xl bg-cream px-4 py-4 text-ink-soft">아직 질문 주제가 없어요. 새 주제를 만들어 주세요.</p>
             ) : (
-              <ul className="grid gap-3 lg:grid-cols-2">
-                {topics.map((topic) => {
-                  const busy = topicBusy === topic.id
-                  const meta = STATUS_META[topic.status]
-                  const selectedTopic = topicFilter === topic.id
-                  return (
-                    <li
-                      key={topic.id}
-                      className={cx(
-                        'rounded-2xl border-2 bg-cream/40 p-4 transition',
-                        selectedTopic ? 'border-sky ring-2 ring-sky/30' : 'border-line',
-                      )}
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="max-h-[24rem] overflow-y-auto rounded-2xl border-2 border-line bg-cream/30">
+                <ul className="divide-y-2 divide-line">
+                  {topics.map((topic) => {
+                    const busy = topicBusy === topic.id
+                    const meta = STATUS_META[topic.status]
+                    const selectedTopic = topicFilter === topic.id
+                    return (
+                      <li
+                        key={topic.id}
+                        className={cx(
+                          'flex flex-wrap items-center gap-3 px-3 py-3 transition sm:flex-nowrap',
+                          selectedTopic ? 'bg-sky-soft/60' : 'hover:bg-paper/70',
+                        )}
+                      >
                         <button
                           type="button"
                           onClick={() => setTopicFilter(selectedTopic ? null : topic.id)}
-                          className={cx(
-                            'min-w-0 flex-1 rounded-xl p-1 text-left transition hover:bg-sky-soft/50 focus:outline-none focus:ring-2 focus:ring-sky',
-                            selectedTopic && 'bg-sky-soft/60',
-                          )}
+                          className="flex min-w-0 flex-1 items-center gap-2 rounded-xl px-2 py-2 text-left hover:bg-sky-soft/50 focus:outline-none focus:ring-2 focus:ring-sky"
                           aria-pressed={selectedTopic}
                           aria-label={`${topic.name} 질문 ${topicCounts.get(topic.id) ?? 0}개 보기`}
                         >
-                          <div className="flex flex-wrap items-center gap-2">
-                            <h3 className="text-xl font-bold break-words">{topic.name}</h3>
-                            <Badge className={meta.className}>{meta.label}</Badge>
-                          </div>
-                          <p className="mt-1 text-sm text-ink-soft">{meta.description} · 현재 질문 {topicCounts.get(topic.id) ?? 0}개</p>
-                          {selectedTopic && <p className="mt-1 text-sm font-bold text-sky-ink">아래에 이 주제의 질문을 표시하고 있어요.</p>}
+                          <span className="truncate text-lg font-bold">{topic.name}</span>
+                          <Badge className={meta.className}>{meta.label}</Badge>
+                          <span className="shrink-0 text-sm text-ink-soft">질문 {topicCounts.get(topic.id) ?? 0}개</span>
                         </button>
-                        <Button variant="ghost" size="sm" onClick={() => renameTopic(topic)} disabled={busy}>
+
+                        <Button variant="ghost" size="sm" onClick={() => renameTopic(topic)} disabled={busy} className="shrink-0">
                           <Pencil className="size-4" aria-hidden />이름 수정
                         </Button>
-                      </div>
 
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        <Button size="sm" variant={topic.status === 'active' ? 'mint' : 'secondary'} onClick={() => changeTopicStatus(topic, 'active')} disabled={busy || topic.status === 'active'}>
-                          <PlayCircle className="size-4" aria-hidden />진행 중
-                        </Button>
-                        <Button size="sm" variant={topic.status === 'archived' ? 'sky' : 'secondary'} onClick={() => changeTopicStatus(topic, 'archived')} disabled={busy || topic.status === 'archived'}>
-                          <Archive className="size-4" aria-hidden />보관
-                        </Button>
-                        <Button size="sm" variant="secondary" onClick={() => changeTopicStatus(topic, 'hidden')} disabled={busy || topic.status === 'hidden'}>
-                          <EyeOff className="size-4" aria-hidden />숨김
-                        </Button>
-                        <Button size="sm" variant="danger" onClick={() => deleteTopic(topic)} disabled={busy} className="sm:ml-auto">
-                          <Trash2 className="size-4" aria-hidden />주제와 기록 모두 삭제
-                        </Button>
-                      </div>
-                    </li>
-                  )
-                })}
-              </ul>
+                        <div className="flex shrink-0 flex-nowrap items-center gap-2 overflow-x-auto">
+                          <Button size="sm" variant={topic.status === 'active' ? 'mint' : 'secondary'} onClick={() => changeTopicStatus(topic, 'active')} disabled={busy || topic.status === 'active'}>
+                            <PlayCircle className="size-4" aria-hidden />진행 중
+                          </Button>
+                          <Button size="sm" variant={topic.status === 'archived' ? 'sky' : 'secondary'} onClick={() => changeTopicStatus(topic, 'archived')} disabled={busy || topic.status === 'archived'}>
+                            <Archive className="size-4" aria-hidden />보관
+                          </Button>
+                          <Button size="sm" variant="secondary" onClick={() => changeTopicStatus(topic, 'hidden')} disabled={busy || topic.status === 'hidden'}>
+                            <EyeOff className="size-4" aria-hidden />숨김
+                          </Button>
+                          <Button size="sm" variant="danger" onClick={() => deleteTopic(topic)} disabled={busy}>
+                            <Trash2 className="size-4" aria-hidden />삭제
+                          </Button>
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
             )}
           </section>
 
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="font-display text-2xl sm:text-3xl">{currentTopic ? `「${currentTopic.name}」 질문` : '전체 질문'}</h2>
-              <p className="mt-1 text-sm text-ink-soft">현재 조건에 맞는 질문 {shown.length}개</p>
-            </div>
+            <h2 className="font-display text-2xl sm:text-3xl">{currentTopic ? `「${currentTopic.name}」 질문` : '전체 질문'}</h2>
             {currentTopic && (
               <Button size="sm" variant="secondary" onClick={() => setTopicFilter(null)}>
                 전체 질문 보기
