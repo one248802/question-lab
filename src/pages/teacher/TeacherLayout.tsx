@@ -14,15 +14,17 @@ const CORE_MENU = [
 const QUESTION_MENU = [
   { to: '/teacher/questions', label: '질문 관리', icon: MessageCircleQuestion },
   { to: '/teacher/activities', label: '분류 활동', icon: LayoutGrid },
+  { to: '/teacher/question-settings', label: '설정', icon: Settings },
 ]
 
 const THOUGHT_MENU = [
-  { to: '/teacher/thoughts', label: '생각 주제 · 투표/결과', icon: Lightbulb },
+  { to: '/teacher/thoughts', label: '생각 주제 · 후보', icon: Lightbulb },
+  { to: '/teacher/thought-settings', label: '설정', icon: Settings },
 ]
 
 const ETC_MENU = [
   { to: '/teacher/students', label: '학생 관리', icon: Users },
-  { to: '/teacher/settings', label: '설정', icon: Settings },
+  { to: '/teacher/settings', label: '내 설정', icon: Settings },
 ]
 
 type MenuItem = { to: string; label: string; icon: typeof LayoutDashboard; end?: boolean }
