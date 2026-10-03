@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Lightbulb, Settings } from 'lucide-react'
 import { ClassPicker, NoClassYet } from '../../components/ClassPicker'
-import { Card, EmptyState, ErrorBox, Input, Label, PageTitle, Spinner, Toggle } from '../../components/ui'
+import { EmptyState, ErrorBox, Input, Label, PageTitle, Spinner, Toggle } from '../../components/ui'
 import { useTeacher } from '../../contexts/TeacherContext'
 import { toMessage } from '../../lib/errors'
 import { supabase } from '../../lib/supabase'
