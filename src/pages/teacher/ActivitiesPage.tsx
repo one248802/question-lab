@@ -118,7 +118,7 @@ function ClassActivities({ classId }: { classId: string }) {
   return (
     <div className="flex flex-col gap-5">
       <p className="text-lg text-ink-soft">
-        2개 또는 3개의 기준으로 질문을 나누게 할 수 있어요. 「학생이 기준 수정」을 켜면 영역 수는 그대로 두고 각 학생이 자기 관점에 맞게 기준 이름을 바꿀 수 있어요.
+        2개, 3개 또는 4개의 기준으로 질문을 나누게 할 수 있어요. 「학생이 기준 수정」을 켜면 영역 수는 그대로 두고 각 학생이 자기 관점에 맞게 기준 이름을 바꿀 수 있어요.
       </p>
       <ErrorBox message={error} />
 
@@ -197,7 +197,7 @@ function ActivityEditor({
   })
   const allSelected = questions.length > 0 && questions.every((q) => selected.has(q.id))
 
-  const setAreaCount = (count: '2' | '3') => {
+  const setAreaCount = (count: '2' | '3' | '4') => {
     const n = Number(count)
     setAreas((current) => Array.from({ length: n }, (_, i) => current[i] ?? ''))
   }
@@ -208,7 +208,7 @@ function ActivityEditor({
     const t = title.trim()
     const names = areas.map((a) => a.trim())
     if (!t) return setError('활동 제목을 써 주세요.')
-    if (![2, 3].includes(names.length)) return setError('분류 영역은 2개 또는 3개로 정해 주세요.')
+    if (![2, 3, 4].includes(names.length)) return setError('분류 영역은 2개, 3개 또는 4개로 정해 주세요.')
     if (names.some((n) => !n)) return setError('분류 기준 이름을 모두 써 주세요.')
     if (new Set(names).size !== names.length) return setError('분류 기준 이름이 서로 달라야 해요.')
     const ids = questions.filter((q) => selected.has(q.id)).map((q) => q.id)
@@ -218,6 +218,8 @@ function ActivityEditor({
     setSaving(false)
     if (result) setError(result)
   }
+
+  const areaCountValue: '2' | '3' | '4' = areas.length === 4 ? '4' : areas.length === 3 ? '3' : '2'
 
   return (
     <Card className="bg-mint-soft/40">
@@ -231,16 +233,16 @@ function ActivityEditor({
 
         <fieldset className="flex flex-col gap-3">
           <legend className="mb-2 text-lg font-bold">몇 개의 기준으로 나눌까요?</legend>
-          <ChoiceChips<'2' | '3'>
-            options={[{ value: '2', label: '2개로 분류' }, { value: '3', label: '3개로 분류' }]}
-            value={areas.length === 3 ? '3' : '2'}
+          <ChoiceChips<'2' | '3' | '4'>
+            options={[{ value: '2', label: '2개로 분류' }, { value: '3', label: '3개로 분류' }, { value: '4', label: '4개로 분류' }]}
+            value={areaCountValue}
             onChange={setAreaCount}
           />
-          <div className="grid gap-2 sm:grid-cols-3">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             {areas.map((name, i) => (
               <div key={i}>
                 <Label htmlFor={`area-${i}`}>기준 {i + 1}</Label>
-                <Input id={`area-${i}`} value={name} onChange={(e) => setAreas((list) => list.map((v, j) => (j === i ? e.target.value : v)))} maxLength={20} placeholder={i === 0 ? '예: 원인' : i === 1 ? '예: 결과' : '예: 해결'} />
+                <Input id={`area-${i}`} value={name} onChange={(e) => setAreas((list) => list.map((v, j) => (j === i ? e.target.value : v)))} maxLength={20} placeholder={i === 0 ? '예: 원인' : i === 1 ? '예: 결과' : i === 2 ? '예: 해결' : '예: 새로운 관점'} />
               </div>
             ))}
           </div>
