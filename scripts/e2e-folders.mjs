@@ -383,7 +383,8 @@ try {
     await pick('실제 질문 하나')
     await teacher.getByRole('button', { name: '이 폴더에서 빼기' }).click()
     await teacher.getByText('「과학 질문」 폴더에서 1개 뺐어요').waitFor({ timeout: 10000 })
-    check('B03 실제 DB: 폴더에서 빼기 → 폴더 1개, 전체 질문 2개 그대로', (await chipCount('과학 질문')) === 1 && (await chipCount('전체 질문')) === 2)
+    // 안내가 먼저 뜨고 폴더 수는 다시 불러온 뒤 바뀌므로, 숫자가 실제로 갱신될 때까지 기다림
+    check('B03 실제 DB: 폴더에서 빼기 → 폴더 1개, 전체 질문 2개 그대로', (await waitChip('과학 질문', 1, 10000)) && (await waitChip('전체 질문', 2, 10000)))
 
     await teacher.getByRole('button', { name: '폴더 지우기' }).click()
     await teacher.getByText('폴더를 지웠어요. 질문은 그대로예요.').waitFor({ timeout: 10000 })
@@ -395,11 +396,17 @@ try {
     await teacher.getByLabel('새 폴더 이름').last().fill('좋은 질문')
     await teacher.getByRole('button', { name: '새 폴더 만들고 넣기' }).click()
     await teacher.getByText('「좋은 질문」 폴더에 1개 넣었어요').waitFor({ timeout: 10000 })
+    // 화면에서는 카드가 먼저 사라지므로, 삭제 요청이 서버에서 끝난 뒤에 새로고침 (먼저 새로고침하면 요청이 끊김)
+    const deleteDone = teacher.waitForResponse((r) => r.url().includes('/rest/v1/questions') && r.request().method() === 'DELETE', { timeout: 10000 })
     await card('실제 질문 둘').getByRole('button', { name: '삭제' }).click()
+    const deleteRes = await deleteDone
     await teacher.waitForFunction(() => !document.body.innerText.includes('실제 질문 둘'), null, { timeout: 10000 })
     await teacher.reload()
-    await chip('좋은 질문').waitFor({ timeout: 10000 })
-    check('B05 실제 DB: 폴더 안 질문 삭제 → 폴더는 남고 연결만 없어짐 (0개)', (await chipCount('좋은 질문')) === 0)
+    await card('실제 질문 하나').waitFor({ timeout: 10000 })
+    check(
+      'B05 실제 DB: 폴더 안 질문 삭제 → 폴더는 남고 연결만 없어짐 (0개), 전체 질문 1개',
+      deleteRes.ok() && (await waitChip('좋은 질문', 0, 10000)) && (await waitChip('전체 질문', 1, 10000)),
+    )
 
     const s = students[0]
     await s.reload()

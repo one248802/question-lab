@@ -1,6 +1,6 @@
 # PROJECT_STATUS — 우리반 질문 상자
 
-> 마지막 정리: 2026-10-03 (실제 배포 사용 중. PR #10 UX 개선까지 병합, 날짜별 질문 보기 + 교사 질문 폴더 PR 작업 중 — 새 migration 실제 DB 미적용)
+> 마지막 정리: 2026-10-03 (실제 배포 사용 중. PR #10 UX 개선까지 병합, 날짜별 질문 보기 + 교사 질문 폴더 PR 진행 중 — migration 실제 DB 적용 완료)
 > 다음 세션은 이 문서만 읽고 이어서 작업할 수 있도록 작성했습니다. 맨 아래 **작업 재개 프롬프트**를 그대로 붙여 넣으세요.
 
 ---
@@ -198,7 +198,7 @@
 | **migration** | ✅ **적용 완료 (2026-10-02)**. 현재 main의 `20261001000000_init.sql`을 SQL Editor에서 실행. 그 전에 PR #1 시절 구버전 migration이 실행되어 있어서 `supabase/dev/reset_app_schema.sql`로 앱 객체만 정리한 뒤 다시 적용 |
 | migration `20261002120000_reset_class_votes.sql` | ✅ 적용 완료 (2026-10-02, SQL Editor). 투표 초기화 RPC |
 | migration `20261002150000_classification_activities.sql` | ✅ 적용 완료 (2026-10-02, SQL Editor). 질문 분류 활동 |
-| migration `20261003120000_question_folders.sql` | ⏳ **아직 적용 안 함**. 교사 질문 폴더. 적용 전에는 교사 질문 화면에 「폴더를 불러오지 못했어요」가 보이고 질문 기능은 그대로 동작 |
+| migration `20261003120000_question_folders.sql` | ✅ 적용 완료 (2026-10-03, SQL Editor). 교사 질문 폴더. `scripts/e2e-folders.mjs` 29/29(실제 DB 구간 B 포함) |
 | Anonymous Sign-ins | ✅ 켜져 있음. 실제 익명 로그인으로 학생 입장 확인 |
 | Confirm email | 꺼져 있음 (`mailer_autoconfirm: true`, 가입하면 바로 로그인). 운영 전 결정 필요 |
 | Site URL | 확인하지 않음. 배포 후 Authentication → URL Configuration에서 설정 |
@@ -211,7 +211,7 @@
 
 모든 작업은 최신 `main`에서 새 브랜치를 만들어 시작하고, DB 변경은 **새 migration 파일**로 합니다.
 
-1. 질문 폴더 PR(`claude/question-folders`): 실제 Supabase SQL Editor 에서 `20261003120000_question_folders.sql` 적용 → `node scripts/e2e-folders.mjs` 의 B(실제 DB) 구간 확인 → 병합. 다른 교사도 비밀번호 재설정을 쓰려면 Custom SMTP 설정
+1. 질문 폴더 PR(`claude/question-folders`) 병합 (migration 실제 DB 적용·확인 완료). 다른 교사도 비밀번호 재설정을 쓰려면 Custom SMTP 설정
    - 나중에 학생별 질문 모아보기는 학생 관리(`StudentsPage`)의 학생 줄에서 여는 방식으로 붙이면 됨 (이미 학생별 질문 수를 불러옴)
 2. 실제 휴대폰·태블릿에서 질문 분류 활동 확인: long-press drag & drop, swipe scroll, PNG save/share (4번 「질문 분류 활동」의 미검증 항목)
 3. 실제 사용 중 학생 로그인이 풀렸다고 느껴지면: 그때 화면이 「계속하기」였는지 빈 입장 폼이었는지, 기기·브라우저·링크를 연 방법(인앱 브라우저 여부) 기록
