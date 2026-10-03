@@ -9,12 +9,14 @@ import Home from './pages/Home'
 import StudentBoard from './pages/student/StudentBoard'
 import StudentJoin from './pages/student/StudentJoin'
 import StudentMyQuestions from './pages/student/StudentMyQuestions'
+import StudentQuestionGallery from './pages/student/StudentQuestionGallery'
 import StudentSpaceHome from './pages/student/StudentSpaceHome'
 import StudentThoughtTopic from './pages/student/StudentThoughtTopic'
 import StudentThoughtTopics from './pages/student/StudentThoughtTopics'
 import ActivitiesPage from './pages/teacher/ActivitiesPage'
 import ClassesPage from './pages/teacher/ClassesPage'
 import Dashboard from './pages/teacher/Dashboard'
+import QuestionSettingsPage from './pages/teacher/QuestionSettingsPage'
 import QuestionsPage from './pages/teacher/QuestionsPage'
 import ResetPassword from './pages/teacher/ResetPassword'
 import SettingsPage from './pages/teacher/SettingsPage'
@@ -22,6 +24,7 @@ import StudentQuestionsPage from './pages/teacher/StudentQuestionsPage'
 import StudentsPage from './pages/teacher/StudentsPage'
 import TeacherLayout from './pages/teacher/TeacherLayout'
 import TeacherLogin from './pages/teacher/TeacherLogin'
+import ThoughtSettingsPage from './pages/teacher/ThoughtSettingsPage'
 import ThoughtTopicsPage from './pages/teacher/ThoughtTopicsPage'
 
 // 분류 활동 화면은 학생이 활동을 열 때만 불러옵니다.
@@ -47,6 +50,7 @@ export default function App() {
             <Route path="/student/home" element={<StudentSpaceHome />} />
             <Route path="/student/board" element={<StudentBoard />} />
             <Route path="/student/my-questions" element={<StudentMyQuestions />} />
+            <Route path="/student/question-gallery" element={<StudentQuestionGallery />} />
             <Route path="/student/thoughts" element={<StudentThoughtTopics />} />
             <Route path="/student/thoughts/:topicId" element={<StudentThoughtTopic />} />
             <Route
@@ -64,8 +68,10 @@ export default function App() {
               <Route index element={<Dashboard />} />
               <Route path="classes" element={<ClassesPage />} />
               <Route path="questions" element={<QuestionsPage />} />
+              <Route path="question-settings" element={<QuestionSettingsPage />} />
               <Route path="activities" element={<ActivitiesPage />} />
               <Route path="thoughts" element={<ThoughtTopicsPage />} />
+              <Route path="thought-settings" element={<ThoughtSettingsPage />} />
               <Route path="students" element={<StudentsPage />} />
               <Route path="students/:studentId" element={<StudentQuestionsPage />} />
               <Route path="settings" element={<SettingsPage />} />
