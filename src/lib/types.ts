@@ -1,6 +1,7 @@
 /** 투표 상태: 시작 전 → 투표 중 → 종료 (종료 후 다시 열 수 있음) */
 export type VotingStatus = 'before' | 'open' | 'closed'
 export type ThoughtAuthorMode = 'anonymous' | 'named'
+export type QuestionTopicStatus = 'active' | 'archived' | 'hidden'
 
 export interface Profile {
   id: string
@@ -53,6 +54,7 @@ export interface TeacherQuestion {
   id: string
   class_id: string
   student_id: string
+  topic_id: string | null
   content: string
   is_hidden: boolean
   created_at: string
@@ -60,7 +62,17 @@ export interface TeacherQuestion {
   vote_count: number
 }
 
-/** 교사 질문 폴더 (질문 ↔ 폴더 연결 방식, 한 질문이 여러 폴더에 들어갈 수 있음) */
+/** 질문 주제: 학생 공개 상태는 active / archived / hidden 으로 관리 */
+export interface QuestionTopic {
+  id: string
+  class_id: string
+  name: string
+  status: QuestionTopicStatus
+  created_at: string
+  updated_at: string
+}
+
+/** 이전 폴더 UI와의 호환을 위해 남겨 둔 레거시 타입. 새 화면에서는 QuestionTopic을 사용합니다. */
 export interface QuestionFolder {
   id: string
   class_id: string
@@ -70,7 +82,7 @@ export interface QuestionFolder {
   question_ids: string[]
 }
 
-/** 교사 질문 화면 폴더 필터에서 「폴더 없음」(어느 폴더에도 들지 않은 질문)을 뜻하는 값 */
+/** 이전 폴더 필터의 레거시 값 */
 export const NO_FOLDER_FILTER = 'no-folder'
 
 /** 학생 화면용 질문 (작성자 정보 없음) */
