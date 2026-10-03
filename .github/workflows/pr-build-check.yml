@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - gpt/thought-playground-phase1
+  pull_request:
+    branches:
+      - main
 
 jobs:
   build:
