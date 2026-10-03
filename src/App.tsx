@@ -15,6 +15,7 @@ import Dashboard from './pages/teacher/Dashboard'
 import QuestionsPage from './pages/teacher/QuestionsPage'
 import ResetPassword from './pages/teacher/ResetPassword'
 import SettingsPage from './pages/teacher/SettingsPage'
+import StudentQuestionsPage from './pages/teacher/StudentQuestionsPage'
 import StudentsPage from './pages/teacher/StudentsPage'
 import TeacherLayout from './pages/teacher/TeacherLayout'
 import TeacherLogin from './pages/teacher/TeacherLogin'
@@ -62,6 +63,7 @@ export default function App() {
               <Route path="questions" element={<QuestionsPage />} />
               <Route path="activities" element={<ActivitiesPage />} />
               <Route path="students" element={<StudentsPage />} />
+              <Route path="students/:studentId" element={<StudentQuestionsPage />} />
               <Route path="settings" element={<SettingsPage />} />
             </Route>
 

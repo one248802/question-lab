@@ -76,6 +76,7 @@ export default function QuestionsPage() {
         'id, class_id, student_id, content, is_hidden, created_at, student:students(student_number, name), votes(count)',
       )
       .eq('class_id', selectedClassId)
+      .is('superseded_at', null)
       .order('created_at', { ascending: false })
     setNow(Date.now())
     if (err) setError(toMessage(err))
