@@ -7,7 +7,7 @@ import { useTeacher } from '../../contexts/TeacherContext'
 import { formatDateTime, localDateKey, startOfWeek } from '../../lib/date'
 import { toMessage } from '../../lib/errors'
 import { supabase } from '../../lib/supabase'
-import type { QuestionFolder, TeacherQuestion } from '../../lib/types'
+import { NO_FOLDER_FILTER, type QuestionFolder, type TeacherQuestion } from '../../lib/types'
 
 const POLL_MS = 15_000
 
@@ -99,6 +99,10 @@ export default function QuestionsPage() {
 
   // 다른 학급으로 바꾸면 그 학급에 없는 폴더는 자동으로 「전체 질문」
   const currentFolder = folders.find((f) => f.id === folderFilter) ?? null
+  const noFolderFilter = folderFilter === NO_FOLDER_FILTER
+  // 어느 폴더에든 들어 있는 질문 id
+  const inSomeFolder = useMemo(() => new Set(folders.flatMap((f) => f.question_ids)), [folders])
+  const unfolderedCount = useMemo(() => questions.filter((q) => !inSomeFolder.has(q.id)).length, [questions, inSomeFolder])
 
   // 날짜·폴더·공개 여부 필터를 함께 적용
   const shown = useMemo(() => {
@@ -114,12 +118,14 @@ export default function QuestionsPage() {
     if (currentFolder) {
       const ids = new Set(currentFolder.question_ids)
       list = list.filter((q) => ids.has(q.id))
+    } else if (noFolderFilter) {
+      list = list.filter((q) => !inSomeFolder.has(q.id))
     }
     if (visibility === 'visible') list = list.filter((q) => !q.is_hidden)
     if (visibility === 'hidden') list = list.filter((q) => q.is_hidden)
     if (sort === 'votes') list = [...list].sort((a, b) => b.vote_count - a.vote_count)
     return list
-  }, [questions, dateFilter, todayKey, now, pickedDate, currentFolder, visibility, sort])
+  }, [questions, dateFilter, todayKey, now, pickedDate, currentFolder, noFolderFilter, inSomeFolder, visibility, sort])
 
   // 선택은 지금 보이는 질문 중에서만 셈 (필터를 바꾸면 안 보이는 질문은 선택에서 빠짐)
   const selectedShown = useMemo(() => shown.filter((q) => selected.has(q.id)), [shown, selected])
@@ -327,7 +333,8 @@ export default function QuestionsPage() {
             <FolderBar
               folders={folders}
               total={questions.length}
-              value={currentFolder?.id ?? null}
+              unfoldered={unfolderedCount}
+              value={currentFolder?.id ?? (noFolderFilter ? NO_FOLDER_FILTER : null)}
               onChange={(id) => setFolderFilter(id)}
               onCreate={async (name) => Boolean(await createFolder(name))}
               onRename={renameFolder}

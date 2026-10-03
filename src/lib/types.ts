@@ -61,6 +61,9 @@ export interface QuestionFolder {
   question_ids: string[]
 }
 
+/** 교사 질문 화면 폴더 필터에서 「폴더 없음」(어느 폴더에도 들지 않은 질문)을 뜻하는 값 */
+export const NO_FOLDER_FILTER = 'no-folder'
+
 /** 학생 화면용 질문 (작성자 정보 없음) */
 export interface BoardQuestion {
   id: string

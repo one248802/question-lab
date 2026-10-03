@@ -1,12 +1,13 @@
 import { useState, type FormEvent } from 'react'
 import { CheckSquare, Folder, FolderInput, FolderMinus, FolderPlus, Pencil, Square, Trash2, X } from 'lucide-react'
-import type { QuestionFolder } from '../lib/types'
+import { NO_FOLDER_FILTER, type QuestionFolder } from '../lib/types'
 import { Button, Input, cx } from './ui'
 
-/** 폴더 필터: 전체 질문 + 학급의 폴더들 + 새 폴더 */
+/** 폴더 필터: 전체 질문 + 폴더 없음 + 학급의 폴더들 + 새 폴더 */
 export function FolderBar({
   folders,
   total,
+  unfoldered,
   value,
   onChange,
   onCreate,
@@ -15,8 +16,11 @@ export function FolderBar({
 }: {
   folders: QuestionFolder[]
   total: number
+  /** 어느 폴더에도 들지 않은 질문 수 */
+  unfoldered: number
+  /** null = 전체 질문, NO_FOLDER_FILTER = 폴더 없음, 그 밖에는 폴더 id */
   value: string | null
-  onChange: (folderId: string | null) => void
+  onChange: (value: string | null) => void
   onCreate: (name: string) => Promise<boolean>
   onRename: (folder: QuestionFolder) => void
   onDelete: (folder: QuestionFolder) => void
@@ -35,6 +39,15 @@ export function FolderBar({
         <span className="mr-1 text-base font-bold text-ink-soft">폴더</span>
         <button type="button" role="radio" aria-checked={value === null} onClick={() => onChange(null)} className={chip(value === null)}>
           전체 질문 <span className="text-ink-soft">{total}</span>
+        </button>
+        <button
+          type="button"
+          role="radio"
+          aria-checked={value === NO_FOLDER_FILTER}
+          onClick={() => onChange(NO_FOLDER_FILTER)}
+          className={chip(value === NO_FOLDER_FILTER)}
+        >
+          폴더 없음 <span className="text-ink-soft">{unfoldered}</span>
         </button>
         {folders.map((f) => (
           <button key={f.id} type="button" role="radio" aria-checked={value === f.id} onClick={() => onChange(f.id)} className={chip(value === f.id)}>
