@@ -1,11 +1,34 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft, DoorOpen } from 'lucide-react'
+import { ConnectionRetry } from '../../components/ConnectionRetry'
 import { Button, Card, ErrorBox, Input, Label, Spinner } from '../../components/ui'
 import { useAuth } from '../../contexts/AuthContext'
 import { toMessage } from '../../lib/errors'
+import { lookupMyStudent } from '../../lib/studentSession'
 import { supabase } from '../../lib/supabase'
 import type { StudentContext } from '../../lib/types'
+
+// 「이 클래스 코드 기억하기」: 이 브라우저의 localStorage 에 클래스 코드만 저장 (번호·이름은 저장하지 않음)
+const REMEMBERED_CODE_KEY = 'qlab:remembered-class-code'
+
+function readRememberedCode(): string {
+  try {
+    const v = window.localStorage.getItem(REMEMBERED_CODE_KEY) ?? ''
+    return /^[A-Z0-9]{6}$/.test(v) ? v : ''
+  } catch {
+    return ''
+  }
+}
+
+function writeRememberedCode(code: string | null) {
+  try {
+    if (code) window.localStorage.setItem(REMEMBERED_CODE_KEY, code)
+    else window.localStorage.removeItem(REMEMBERED_CODE_KEY)
+  } catch {
+    /* 저장할 수 없는 환경이면 무시 */
+  }
+}
 
 export default function StudentJoin() {
   const navigate = useNavigate()
@@ -13,26 +36,49 @@ export default function StudentJoin() {
 
   const [checking, setChecking] = useState(true)
   const [existing, setExisting] = useState<StudentContext | null>(null)
+  const [lookupError, setLookupError] = useState<string | null>(null)
+  const [retryCount, setRetryCount] = useState(0)
   const [showForm, setShowForm] = useState(false)
 
-  const [code, setCode] = useState('')
+  const [code, setCode] = useState(readRememberedCode)
+  const [rememberCode, setRememberCode] = useState(() => readRememberedCode() !== '')
   const [number, setNumber] = useState('')
   const [name, setName] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // 이 기기로 이미 입장한 학생이 있는지 확인
+  // 이 기기로 이미 입장한 학생이 있는지 확인. 일시적인 오류는 '입장 안 함'으로 보지 않고 다시 시도하게 함
   useEffect(() => {
     if (authLoading) return
-    if (!user || !isAnonymous) {
-      setChecking(false)
-      return
+    let alive = true
+    const check = async () => {
+      if (!user || !isAnonymous) return { existing: null, error: null }
+      const result = await lookupMyStudent()
+      if (result.status === 'joined') return { existing: result.student, error: null }
+      if (result.status === 'error') return { existing: null, error: result.message }
+      return { existing: null, error: null }
     }
-    supabase.rpc('get_my_student').then(({ data }) => {
-      setExisting((data as StudentContext | null) ?? null)
+    check().then((r) => {
+      if (!alive) return
+      setExisting(r.existing)
+      setLookupError(r.error)
       setChecking(false)
     })
-  }, [authLoading, user, isAnonymous])
+    return () => {
+      alive = false
+    }
+  }, [authLoading, user, isAnonymous, retryCount])
+
+  const retryLookup = () => {
+    setChecking(true)
+    setRetryCount((n) => n + 1)
+  }
+
+  const toggleRemember = (next: boolean) => {
+    setRememberCode(next)
+    // 체크를 풀면 저장된 클래스 코드를 바로 지움 (체크하면 입장에 성공했을 때 저장)
+    if (!next) writeRememberedCode(null)
+  }
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault()
@@ -57,6 +103,7 @@ export default function StudentJoin() {
         p_name: name,
       })
       if (joinError) throw joinError
+      writeRememberedCode(rememberCode ? code : null)
       navigate('/student/board', { replace: true })
     } catch (err) {
       setError(toMessage(err))
@@ -79,6 +126,12 @@ export default function StudentJoin() {
 
       {checking ? (
         <Spinner />
+      ) : lookupError && !showForm ? (
+        <ConnectionRetry message={lookupError} retrying={checking} onRetry={retryLookup}>
+          <Button variant="secondary" block onClick={() => setShowForm(true)}>
+            입장 정보 다시 넣기
+          </Button>
+        </ConnectionRetry>
       ) : existing && !showForm ? (
         <Card className="flex flex-col gap-4">
           <p className="text-lg text-ink-soft">{existing.class_name}</p>
@@ -132,11 +185,23 @@ export default function StudentJoin() {
                 />
               </div>
             </div>
+            <label className="flex cursor-pointer items-center gap-3 text-lg">
+              <input
+                type="checkbox"
+                checked={rememberCode}
+                onChange={(e) => toggleRemember(e.target.checked)}
+                className="size-6 shrink-0 accent-[#e8c34f]"
+              />
+              이 클래스 코드 기억하기
+            </label>
             <ErrorBox message={error} />
             <Button type="submit" size="xl" block loading={submitting}>
               들어가기
             </Button>
           </form>
+          <p className="mt-4 text-center text-sm text-ink-soft">
+            한 번 들어오면 브라우저를 닫아도 그대로 다시 들어올 수 있어요. 여러 사람이 함께 쓰는 기기에서는 다 쓴 뒤 「나가기」를 눌러 주세요.
+          </p>
         </Card>
       )}
     </main>

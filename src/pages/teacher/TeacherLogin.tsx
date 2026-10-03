@@ -112,6 +112,7 @@ export default function TeacherLogin() {
           <Button type="submit" variant="sky" size="lg" block loading={submitting}>
             {mode === 'login' ? '로그인' : '가입하기'}
           </Button>
+          <p className="text-center text-sm text-ink-soft">로그인은 이 브라우저에 유지돼요. 함께 쓰는 컴퓨터에서는 사용 후 꼭 로그아웃해 주세요.</p>
         </form>
       </Card>
     </main>

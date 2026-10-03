@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Heart, Inbox, LogOut, RefreshCw, UserRound } from 'lucide-react'
+import { ConnectionRetry } from '../../components/ConnectionRetry'
 import { OpenActivities } from '../../components/OpenActivities'
 import { QuestionComposer } from '../../components/QuestionComposer'
 import { Button, ChoiceChips, ErrorBox, EmptyState, Spinner, cx } from '../../components/ui'
@@ -26,13 +27,24 @@ export default function StudentBoard() {
   const [notice, setNotice] = useState<string | null>(null)
   const [sort, setSort] = useState<Sort>('new')
   const [pending, setPending] = useState<Set<string>>(new Set())
+  // get_my_student 가 일시적으로 실패한 경우 (네트워크·토큰 갱신 중). 입장 화면으로 보내지 않음
+  const [connectionError, setConnectionError] = useState<string | null>(null)
+  const [retrying, setRetrying] = useState(false)
 
   const load = useCallback(async () => {
     const [ctx, list] = await Promise.all([supabase.rpc('get_my_student'), supabase.rpc('list_class_questions')])
+    if (ctx.error) {
+      // 일시적인 오류: 지금 화면과 입장 정보는 그대로 두고, 다시 시도(또는 다음 자동 새로고침)를 기다림
+      setConnectionError(toMessage(ctx.error))
+      setLoading(false)
+      return
+    }
     if (!ctx.data) {
+      // 실제로 연결된 학생이 없을 때만 입장 화면으로
       navigate('/student', { replace: true })
       return
     }
+    setConnectionError(null)
     setMe(ctx.data as StudentContext)
     if (list.error) setError(toMessage(list.error))
     else {
@@ -123,11 +135,25 @@ export default function StudentBoard() {
   const leave = async () => {
     if (!window.confirm('나갈까요?')) return
     await supabase.rpc('leave_class')
+    // 첫 화면으로 먼저 옮긴 뒤 세션을 끝냄 (첫 화면의 자동 재진입이 끼어들지 않도록 signingOut 표시)
+    navigate('/', { replace: true, state: { signingOut: true } })
     await supabase.auth.signOut()
-    navigate('/', { replace: true })
   }
 
-  if (loading || !me) return <Spinner />
+  const retry = async () => {
+    setRetrying(true)
+    await load()
+    setRetrying(false)
+  }
+
+  if (loading) return <Spinner />
+  if (!me) {
+    return (
+      <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-4 py-6">
+        <ConnectionRetry message={connectionError} retrying={retrying} onRetry={retry} />
+      </main>
+    )
+  }
 
   return (
     <div className="min-h-dvh">
@@ -181,6 +207,7 @@ export default function StudentBoard() {
 
           <VoteStatus me={me} myVotes={myVotes} />
 
+          {connectionError && <ErrorBox message="연결이 잠시 불안정해요. 잠시 후 자동으로 다시 불러와요." />}
           <ErrorBox message={error} />
 
           {sorted.length === 0 ? (

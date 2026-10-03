@@ -8,7 +8,9 @@
 //   - 매번 새 교사 테스트 계정을 만들고, 끝나면 교사 화면에서 테스트 학급을 지웁니다.
 //     교사 계정과 익명 사용자는 Supabase Authentication → Users 에 남습니다.
 import { chromium } from 'playwright-core'
-import { mkdirSync, readFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { resolve } from 'node:path'
 
 const BASE = process.env.BASE_URL || 'http://localhost:5173'
@@ -24,13 +26,14 @@ const check = (label, ok, detail) => {
 }
 const shot = (page, name) => page.screenshot({ path: `${SHOTS}${name}.png`, fullPage: true })
 
-const browser = await chromium.launch({
+const launchOptions = {
   executablePath: process.env.CHROMIUM_PATH || '/opt/pw-browsers/chromium',
   // 컨테이너에 로캘이 없으면 한글 다운로드 파일 이름이 'download' 로 바뀌므로 UTF-8 로캘 지정
   env: { ...process.env, LANG: process.env.LANG || 'C.UTF-8' },
   // Playwright 의 proxy 옵션은 localhost 도 프록시로 보내므로 Chromium 인자로 직접 지정
   args: process.env.HTTPS_PROXY ? [`--proxy-server=${process.env.HTTPS_PROXY}`, '--proxy-bypass-list=localhost;127.0.0.1'] : [],
-})
+}
+const browser = await chromium.launch(launchOptions)
 const ctx = () => browser.newContext({ viewport: { width: 1280, height: 900 }, locale: 'ko-KR' })
 const [tCtx, aCtx, bCtx, mCtx] = await Promise.all([ctx(), ctx(), ctx(), browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true })])
 const teacher = await tCtx.newPage()
@@ -107,6 +110,31 @@ const pngSize = (buf) =>
   buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
     ? { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) }
     : null
+
+// 브라우저를 완전히 껐다가 같은 프로필로 다시 켜기 (재접속 테스트). 매번 새 브라우저 프로세스
+const profiles = []
+const openProfile = async (dir) => {
+  const context = await chromium.launchPersistentContext(dir, { ...launchOptions, viewport: { width: 1280, height: 900 }, locale: 'ko-KR' })
+  const page = context.pages()[0] ?? (await context.newPage())
+  page.on('dialog', (d) => d.accept())
+  return { context, page }
+}
+const AUTH_KEY_RE = /^sb-.+-auth-token$/
+const authKeys = (page) => page.evaluate((re) => Object.keys(localStorage).filter((k) => new RegExp(re).test(k)), AUTH_KEY_RE.source)
+// 저장된 세션의 access token 을 만료된 것으로 바꿈 → 다음 실행 때 supabase-js 가 refresh token 으로 갱신해야 함
+const expireAccessToken = (page) =>
+  page.evaluate((re) => {
+    for (const k of Object.keys(localStorage).filter((k) => new RegExp(re).test(k))) {
+      const v = JSON.parse(localStorage.getItem(k))
+      v.expires_at = Math.floor(Date.now() / 1000) - 600
+      localStorage.setItem(k, JSON.stringify(v))
+    }
+  }, AUTH_KEY_RE.source)
+// 로그아웃/나가기 후 저장된 세션이 지워질 때까지 기다림
+const waitSessionCleared = (page) =>
+  page.waitForFunction((re) => !Object.keys(localStorage).some((k) => new RegExp(re).test(k)), AUTH_KEY_RE.source, { timeout: 10000 })
+const failGetMyStudent = (page) => page.route('**/rest/v1/rpc/get_my_student', (r) => r.fulfill({ status: 503, json: { message: 'temporarily unavailable' } }))
+const healGetMyStudent = (page) => page.unroute('**/rest/v1/rpc/get_my_student')
 
 const reload = async (page) => {
   await page.reload()
@@ -294,9 +322,11 @@ try {
   confirmAnswer = true
   check('B35 숨기기와 삭제 버튼이 따로 있음',
     (await card(teacher, QB).getByRole('button', { name: '숨기기' }).isVisible()) && (await card(teacher, QB).getByRole('button', { name: '삭제' }).isVisible()))
+  // 교사 화면은 서버 응답 전에 카드를 먼저 지우므로, 실제 삭제 요청이 끝날 때까지 기다린 뒤 학생 화면 확인
+  const deleteDone = teacher.waitForResponse((r) => r.url().includes('/rest/v1/questions') && r.request().method() === 'DELETE', { timeout: 15000 })
   await card(teacher, QB).getByRole('button', { name: '삭제' }).click()
   await card(teacher, QB).waitFor({ state: 'detached', timeout: 10000 })
-  check('B36 확인하면 교사 화면에서 질문 삭제', (await card(teacher, QA).count()) === 1)
+  check('B36 확인하면 교사 화면에서 질문 삭제', (await card(teacher, QA).count()) === 1 && (await deleteDone).ok())
   await shot(teacher, '09-teacher-questions-deleted')
   await reload(stuA)
   check('B37 학생 화면에서도 삭제된 질문 안 보임', (await stuA.getByText(QB).count()) === 0)
@@ -457,6 +487,115 @@ try {
   await shot(phone, '13-student-activity-phone')
   await touchCtx.close()
 
+  // 14. 재접속: 브라우저를 껐다 켜도 로그인 유지, 일시적인 오류는 로그아웃으로 보지 않음 --------
+  const teacherDir = mkdtempSync(join(tmpdir(), 'qlab-teacher-'))
+  const studentDir = mkdtempSync(join(tmpdir(), 'qlab-student-'))
+  profiles.push(teacherDir, studentDir)
+
+  // 교사: 로그인 → 브라우저 종료 → 다시 열면 첫 화면에서 바로 대시보드
+  let t = await openProfile(teacherDir)
+  await t.page.goto(`${BASE}/teacher/login`)
+  await t.page.locator('#email').fill(email)
+  await t.page.locator('#password').fill(password)
+  await t.page.getByRole('button', { name: '로그인', exact: true }).click()
+  await t.page.waitForURL(`${BASE}/teacher`, { timeout: 15000 })
+  await t.context.close()
+  t = await openProfile(teacherDir)
+  await t.page.goto(`${BASE}/`)
+  await t.page.waitForURL(`${BASE}/teacher`, { timeout: 15000 })
+  check('R01 교사: 브라우저를 다시 열면 첫 화면에서 바로 대시보드', await t.page.getByRole('button', { name: /로그아웃/ }).isVisible())
+  await expireAccessToken(t.page)
+  await t.context.close()
+  t = await openProfile(teacherDir)
+  await t.page.goto(`${BASE}/`)
+  await t.page.waitForURL(`${BASE}/teacher`, { timeout: 15000 })
+  await t.page.getByRole('button', { name: /로그아웃/ }).waitFor({ timeout: 10000 })
+  check('R02 교사: access token 이 만료돼 있어도 자동 갱신되어 대시보드', true)
+  await t.page.getByRole('button', { name: /로그아웃/ }).click()
+  await t.page.getByRole('link', { name: '교사 로그인' }).waitFor({ timeout: 10000 })
+  await waitSessionCleared(t.page)
+  check('R03 교사: 로그아웃하면 첫 화면, 세션 삭제', t.page.url() === `${BASE}/` && (await authKeys(t.page)).length === 0)
+  await t.context.close()
+  t = await openProfile(teacherDir)
+  await t.page.goto(`${BASE}/`)
+  await t.page.getByRole('link', { name: '교사 로그인' }).waitFor({ timeout: 10000 })
+  check('R04 교사: 로그아웃 후 다시 열면 첫 화면 그대로 (자동 로그인 안 됨)', t.page.url() === `${BASE}/`)
+  await t.context.close()
+
+  // 학생: 입장(클래스 코드 기억하기 체크) → 브라우저 종료 → 다시 열면 같은 학생으로 게시판
+  let st = await openProfile(studentDir)
+  await st.page.goto(`${BASE}/student`)
+  await st.page.locator('#code').fill(classCode.toLowerCase())
+  await st.page.locator('#number').fill('5')
+  await st.page.locator('#name').fill('정하루')
+  await st.page.getByLabel('이 클래스 코드 기억하기').check()
+  await st.page.getByRole('button', { name: '들어가기' }).click()
+  await st.page.waitForURL(`${BASE}/student/board`, { timeout: 15000 })
+  await st.context.close()
+  st = await openProfile(studentDir)
+  await st.page.goto(`${BASE}/`)
+  await st.page.waitForURL(`${BASE}/student/board`, { timeout: 15000 })
+  await st.page.getByText('5번 정하루').waitFor({ timeout: 10000 })
+  check('R05 학생: 브라우저를 다시 열면 첫 화면에서 바로 같은 학생 게시판', true)
+  await expireAccessToken(st.page)
+  await st.context.close()
+  st = await openProfile(studentDir)
+  await st.page.goto(`${BASE}/student/board`)
+  await st.page.getByText('5번 정하루').waitFor({ timeout: 15000 })
+  check('R06 학생: access token 이 만료돼 있어도 자동 갱신되어 같은 학생', st.page.url() === `${BASE}/student/board`)
+
+  // 일시적인 get_my_student 오류: 입장 화면으로 보내지 않고 다시 시도
+  await failGetMyStudent(st.page)
+  await st.page.reload()
+  await st.page.getByText('연결이 잠시 불안정해요').waitFor({ timeout: 15000 })
+  check('R07 게시판: 일시적 오류면 입장 화면이 아니라 다시 시도 화면', st.page.url() === `${BASE}/student/board`)
+  check('R08 일시적 오류 중에도 세션은 그대로', (await authKeys(st.page)).length === 1)
+  await healGetMyStudent(st.page)
+  await st.page.getByRole('button', { name: '다시 시도' }).click()
+  await st.page.getByText('5번 정하루').waitFor({ timeout: 15000 })
+  check('R09 「다시 시도」로 같은 학생 게시판 복구', true)
+  await failGetMyStudent(st.page)
+  await st.page.goto(`${BASE}/student`)
+  await st.page.getByText('연결이 잠시 불안정해요').waitFor({ timeout: 15000 })
+  check('R10 입장 화면: 일시적 오류면 빈 입장 폼 대신 다시 시도 화면', (await st.page.locator('#number').count()) === 0)
+  await healGetMyStudent(st.page)
+  await st.page.getByRole('button', { name: '다시 시도' }).click()
+  await st.page.getByRole('button', { name: '계속하기' }).waitFor({ timeout: 15000 })
+  check('R11 다시 시도하면 「계속하기」(같은 학생)', await st.page.getByText('5번 정하루').isVisible())
+  await failGetMyStudent(st.page)
+  await st.page.goto(`${BASE}/student/activity/00000000-0000-0000-0000-000000000000`)
+  await st.page.getByText('연결이 잠시 불안정해요').waitFor({ timeout: 15000 })
+  check('R12 분류 화면: 일시적 오류면 입장 화면으로 보내지 않음', st.page.url().includes('/student/activity/'))
+  await healGetMyStudent(st.page)
+
+  // 나가기: 세션과 학생 연결 정리, 클래스 코드만 기억
+  await st.page.goto(`${BASE}/student/board`)
+  await st.page.getByRole('button', { name: '나가기' }).click()
+  await st.page.getByRole('link', { name: '학생으로 들어가기' }).waitFor({ timeout: 10000 })
+  await waitSessionCleared(st.page)
+  check('R13 나가기: 첫 화면, 세션 삭제', st.page.url() === `${BASE}/` && (await authKeys(st.page)).length === 0)
+  const storage = await st.page.evaluate(() => Object.fromEntries(Object.keys(localStorage).map((k) => [k, localStorage.getItem(k)])))
+  check('R14 localStorage 에는 클래스 코드만 (번호·이름 없음)',
+    storage['qlab:remembered-class-code'] === classCode && !Object.values(storage).some((v) => /정하루/.test(v ?? '')), JSON.stringify(storage))
+  await st.page.goto(`${BASE}/student`)
+  await st.page.locator('#code').waitFor()
+  check('R15 다음 입장 화면: 클래스 코드 자동 입력, 번호·이름은 빈칸',
+    (await st.page.locator('#code').inputValue()) === classCode &&
+      (await st.page.getByLabel('이 클래스 코드 기억하기').isChecked()) &&
+      (await st.page.locator('#number').inputValue()) === '' && (await st.page.locator('#name').inputValue()) === '')
+  await st.page.getByLabel('이 클래스 코드 기억하기').uncheck()
+  check('R16 체크를 풀면 저장된 클래스 코드 삭제',
+    (await st.page.evaluate(() => localStorage.getItem('qlab:remembered-class-code'))) === null)
+  await st.context.close()
+  st = await openProfile(studentDir)
+  await st.page.goto(`${BASE}/student`)
+  await st.page.locator('#code').waitFor()
+  check('R17 다시 열면 클래스 코드 빈칸, 체크 해제', (await st.page.locator('#code').inputValue()) === '' && !(await st.page.getByLabel('이 클래스 코드 기억하기').isChecked()))
+  await st.page.goto(`${BASE}/`)
+  await st.page.getByRole('link', { name: '학생으로 들어가기' }).waitFor({ timeout: 10000 })
+  check('R18 나가기 후 다시 열면 첫 화면 그대로 (자동 입장 안 됨)', st.page.url() === `${BASE}/`)
+  await st.context.close()
+
   await actCard.getByRole('button', { name: '수정' }).click()
   await teacher.getByLabel('영역 3 이름').fill('궁금함')
   await teacher.getByRole('button', { name: '저장' }).click()
@@ -493,6 +632,7 @@ try {
     console.log(`     테스트 학급 삭제 실패: ${e.message.split('\n')[0]}`)
   }
   await browser.close()
+  for (const dir of profiles) rmSync(dir, { recursive: true, force: true })
   console.log(`== ${passed} passed, ${failed} failed  (screenshots: ${SHOTS})`)
   process.exit(failed ? 1 : 0)
 }
