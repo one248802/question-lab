@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowRight, CalendarDays, Lightbulb, LogOut, MessageCircleQuestion, UserRound } from 'lucide-react'
+import { ArrowRight, Lightbulb, LogOut, MessageCircleQuestion, UserRound } from 'lucide-react'
 import { Button, Card, ErrorBox, Spinner } from '../../components/ui'
 import { useAuth } from '../../contexts/AuthContext'
 import { toMessage } from '../../lib/errors'
@@ -85,14 +85,9 @@ export default function StudentSpaceHome() {
               <h3 className="font-display text-3xl">❓ 질문 상자</h3>
               <p className="mt-2 text-lg text-ink-soft">궁금한 것을 질문하고, 친구 생각을 만나며 질문을 발전시켜요.</p>
             </div>
-            <div className="flex flex-wrap justify-center gap-2">
-              <Button size="lg" variant="sky" onClick={() => navigate('/student/board')}>
-                질문 상자 들어가기 <ArrowRight className="size-5" aria-hidden />
-              </Button>
-              <Button variant="secondary" onClick={() => navigate('/student/question-gallery')}>
-                <CalendarDays className="size-5" aria-hidden />지난 질문 갤러리
-              </Button>
-            </div>
+            <Button size="lg" variant="sky" onClick={() => navigate('/student/board')}>
+              질문 상자 들어가기 <ArrowRight className="size-5" aria-hidden />
+            </Button>
           </Card>
 
           <Card className="flex min-h-80 flex-col items-center justify-center gap-5 bg-mint-soft/60 p-7 text-center">
