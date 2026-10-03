@@ -1,6 +1,6 @@
 # PROJECT_STATUS — 우리반 질문 상자
 
-> 마지막 정리: 2026-10-03 (실제 배포 사용 중. 로그인/재접속 UX 개선 PR 작업 중, 비밀번호 재설정은 다음 PR)
+> 마지막 정리: 2026-10-03 (실제 배포 사용 중. 로그인/재접속 UX PR #8 병합, 교사 비밀번호 재설정 PR 작업 중)
 > 다음 세션은 이 문서만 읽고 이어서 작업할 수 있도록 작성했습니다. 맨 아래 **작업 재개 프롬프트**를 그대로 붙여 넣으세요.
 
 ---
@@ -39,8 +39,8 @@
   | [one248802/question-lab#4](https://github.com/one248802/question-lab/pull/4) | 교사 질문 삭제, 학급 투표 초기화 (migration `20261002120000`) | ✅ 병합 (`64f5fd8`) |
   | [one248802/question-lab#5](https://github.com/one248802/question-lab/pull/5) | 질문 분류 활동 PR A: 테이블·RLS·학생 RPC, 교사 화면, 학생 tap-to-move 분류 화면 (migration `20261002150000`) | ✅ 병합 (`c2f4de5`) |
   | [one248802/question-lab#7](https://github.com/one248802/question-lab/pull/7) | PROJECT_STATUS.md 갱신 (PR #6 반영) | ✅ 병합 (`f03f936`) |
-  | (작업 중) | 로그인/재접속 UX: 첫 화면 자동 재진입, 학생 일시 오류 처리, 클래스 코드 기억하기. DB 변경 없음 | 브랜치 `claude/session-reconnect` |
-  | (다음) | 교사 비밀번호 재설정 (Supabase 기본 recovery 메일 → `/reset-password`) | 위 PR 병합 후 새 브랜치 |
+  | [one248802/question-lab#8](https://github.com/one248802/question-lab/pull/8) | 로그인/재접속 UX: 첫 화면 자동 재진입, 학생 일시 오류 처리, 클래스 코드 기억하기. DB 변경 없음 | ✅ 병합 (`194d557`) |
+  | (작업 중) | 교사 비밀번호 재설정 (Supabase 기본 recovery 메일 → `/reset-password`). DB 변경 없음 | 브랜치 `claude/password-reset` |
   | [one248802/question-lab#6](https://github.com/one248802/question-lab/pull/6) | 질문 분류 활동 PR B: 분류 화면 drag & drop(dnd-kit), 분류 결과 PNG 저장. DB/API/migration 변경 없음 | ✅ 병합 (`977329c`) |
 
 - **PR #2에 들어간 주요 커밋**
@@ -63,12 +63,20 @@
 - **교사 Auth**: Supabase 이메일/비밀번호 회원가입·로그인 (`/teacher/login`)
 - **profiles 자동 생성**: `auth.users` insert 트리거 `on_auth_user_created` → `handle_new_user()`. 익명 사용자는 제외하고, display_name은 40자로 자릅니다. 이미 가입된 교사 계정은 migration에서 보충합니다.
 - **학생 anonymous sign-in 구조**: 학생은 Supabase 익명 로그인 후 `join_class` RPC로 입장합니다. 익명 사용자와 학생의 연결은 `student_sessions`에 저장하며, 한 학생이 여러 기기로 입장할 수 있습니다.
-- **세션 유지 / 재접속** (브랜치 `claude/session-reconnect`, DB 변경 없음): 세션은 Supabase 기본대로 localStorage(`sb-<ref>-auth-token`)에 저장되고 자동 갱신됩니다.
+- **세션 유지 / 재접속** (PR #8, DB 변경 없음): 세션은 Supabase 기본대로 localStorage(`sb-<ref>-auth-token`)에 저장되고 자동 갱신됩니다.
   - 첫 화면(`/`)에서 자동 재진입: 교사 세션 → `/teacher`, 학생 세션이 학급에 연결돼 있으면 → `/student/board`. 세션은 **명시적 로그아웃(교사)·「나가기」(학생)** 때만 끝남. 로그아웃/나가기는 첫 화면으로 먼저 옮긴 뒤(`state.signingOut`) `signOut` 하므로 첫 화면이 다시 자동 이동하지 않음
   - 학생의 `get_my_student` 가 **일시적으로 실패**(네트워크·토큰 갱신 중)하면 「미가입」으로 보지 않음: `src/lib/studentSession.ts` 의 `lookupMyStudent()` 가 몇 번 다시 시도하고, 그래도 실패하면 「연결이 잠시 불안정해요 · 다시 시도」 화면(`ConnectionRetry`). 게시판·분류 화면은 지금 상태를 유지. **요청이 성공했는데 연결된 학생이 없을 때만** 입장 화면으로 이동
   - 「이 클래스 코드 기억하기」: 입장에 성공하면 localStorage `qlab:remembered-class-code` 에 **클래스 코드만** 저장(번호·이름 저장 안 함), 다음 입장 화면에 자동 입력. 체크를 풀면 바로 삭제
   - 공용 기기 안내 문구: 학생 입장 화면(다 쓴 뒤 「나가기」), 교사 로그인 화면(사용 후 로그아웃)
   - 원인 분석 메모: 코드상 확인된 원인은 (1) 첫 화면이 세션을 보지 않아 다시 「들어가기」를 눌러야 했던 것, (2) `get_my_student` 의 일시적 오류를 미가입으로 처리해 빈 입장 폼을 보여 준 것. 그 밖에 앱이 막을 수 없는 원인으로 인앱 브라우저(카카오톡 등)·시크릿 모드·기기 정책으로 저장소가 지워지는 경우, Safari 의 7일 미방문 저장소 삭제, 같은 브라우저에서 교사 로그인(학생 세션을 먼저 로그아웃) 이 있음. 실제로 풀렸을 때 「계속하기」 화면이었는지 빈 입장 폼이었는지 확인 필요
+
+- **교사 비밀번호 재설정** (브랜치 `claude/password-reset`, DB 변경 없음, Supabase 기본 기능만 사용):
+  - 로그인 화면 「비밀번호를 잊으셨나요?」 → 이메일 입력 → `resetPasswordForEmail(email, { redirectTo: <현재 주소>/reset-password })`. 가입 여부와 상관없이 같은 안내를 보여 줌
+  - 메일 링크 → `/reset-password#access_token=…&type=recovery` → supabase-js 가 복구 세션을 만들고 주소의 토큰을 지움 → 새 비밀번호 + 확인(6자 이상, 서로 같아야 함) → `updateUser({ password })` → 완료 화면 → 「교사 화면으로 가기」
+  - 만료/이미 쓴 링크(`#error_code=otp_expired`)나 링크 없이 열면 「링크를 쓸 수 없어요 · 재설정 메일 다시 받기」. 이미 로그인돼 있어도 오류 링크면 바꾸기 화면을 보여 주지 않음
+  - Redirect URL 이 등록되지 않아 Supabase 가 Site URL(첫 화면)로 보낸 경우에도 `RecoveryGate`(App.tsx)가 교사 대시보드보다 먼저 `/reset-password` 로 보냄
+  - 링크의 # 값은 `src/lib/authRedirect.ts` 가 앱이 열린 순간 읽어 둠(종류·오류만, 토큰은 저장하지 않음). 비밀번호·토큰을 DB나 브라우저 저장소에 따로 저장하지 않음
+  - **Supabase 설정 필요**: Authentication → URL Configuration → Redirect URLs 에 `https://<배포 주소>/reset-password`(로컬은 `http://localhost:5173/reset-password`). 기본 메일 발송(내장 SMTP)은 시간당 보낼 수 있는 수가 적고 조직 팀원 주소로만 보낼 수 있으므로, 다른 교사가 쓰려면 Custom SMTP 필요
 
 ### 학급 / 학생
 - **학급 생성/수정/삭제** (`/teacher/classes`)
@@ -154,11 +162,12 @@
 | 항목 | 결과 |
 | --- | --- |
 | `NODE_USE_ENV_PROXY=1 node scripts/e2e-supabase.mjs` | ✅ **87/87 통과** (질문 삭제·투표 초기화 12개, 질문 분류 활동 17개 포함). supabase-js(앱과 같은 라이브러리)로 실제 프로젝트에 요청 |
+| `node scripts/e2e-password-reset.mjs` (dev 서버 실행 중) | ✅ **22/22 통과** (2026-10-03). 메일 링크 흐름 18개는 Supabase Auth 응답을 가짜로 돌려줘서 실제 메일 없이 확인(메일 요청·redirect_to, 너무 잦은 요청 안내, 링크 진입·토큰 주소에서 삭제, 6자 미만·불일치·같은 비밀번호 거부, 변경 완료, 저장소에 비밀번호 없음, 만료 링크, 링크 없음, Site URL 로 열린 링크). 실제 Supabase 4개: 테스트 교사(`qlab.reset.*@gmail.com`)로 비밀번호를 실제로 바꾼 뒤 예전 비밀번호 거부·새 비밀번호 로그인 |
 | `node scripts/e2e-browser.mjs` (dev 서버 실행 중) | ✅ **90/90 통과** (질문 삭제·투표 초기화 10개, 질문 분류 활동 16개, drag & drop·터치·PNG 12개, 재접속 18개 포함, 확인창 취소/확인 모두). 재접속 테스트는 같은 프로필로 브라우저 프로세스를 완전히 껐다 켬(교사·학생 재진입, 만료된 access token 자동 갱신, `get_my_student` 503 시 다시 시도 화면, 로그아웃·나가기 후 세션 삭제, 클래스 코드 기억/삭제). 실제 Chromium으로 교사·학생 A·학생 B를 각각 다른 브라우저 세션으로 조작 |
 
 - 검증한 흐름: 교사 회원가입·로그아웃·로그인 → profiles 자동 생성 → 학급 생성·클래스 코드 → 학생 익명 로그인·입장(틀린 코드, 이름 불일치 거부) → 질문 등록(내용만, 3초 제한, 빈 질문 거부) → 익명성(학생 화면·학생이 받은 응답에 작성자 없음, 학생의 테이블 직접 조회/추가 불가, 내부 함수 호출 불가) → 교사만 작성자 확인 → before/open/closed 규칙과 잘못된 전환 거부 → max_votes(줄여도 기존 표 유지, 초과분 취소) → 자기 질문 투표 → 투표 바꾸기 → 투표 중/종료 후 결과 공개 → 다시 열기 → 질문 숨기기 → 모바일 폭(390px) 가로 스크롤 없음
 - **앱 버그는 발견되지 않았습니다.** 고친 것은 테스트 스크립트(선택자, 투표 응답 대기)와 테스트 환경(아래)뿐입니다.
-- 두 스크립트 모두 끝나면 테스트 학급을 지웁니다(학생·질문·투표 함께 삭제). **테스트용 교사 계정(`qlab.e2e.*@gmail.com`, `qlab.browser.*@gmail.com`)과 익명 사용자는 Authentication → Users 에 남습니다** (publishable key로는 지울 수 없음). 대시보드에서 지워도 됩니다.
+- 두 스크립트 모두 끝나면 테스트 학급을 지웁니다(학생·질문·투표 함께 삭제). **테스트용 교사 계정(`qlab.e2e.*@gmail.com`, `qlab.browser.*@gmail.com`, `qlab.reset.*@gmail.com`)과 익명 사용자는 Authentication → Users 에 남습니다** (publishable key로는 지울 수 없음). 대시보드에서 지워도 됩니다.
 - 브라우저 테스트 환경 주의: 이 클라우드 환경의 Chromium은 프록시 CA를 신뢰하지 않아 Supabase 요청이 `ERR_CERT_AUTHORITY_INVALID`로 실패했습니다. `/root/.ccr/ca-bundle.crt`의 인증서를 `certutil`로 `~/.pki/nssdb`에 등록해 해결했습니다(TLS 검증은 끄지 않음). 새 컨테이너에서는 다시 해야 할 수 있습니다:
   ```bash
   apt-get install -y libnss3-tools
@@ -189,7 +198,7 @@
 
 모든 작업은 최신 `main`에서 새 브랜치를 만들어 시작하고, DB 변경은 **새 migration 파일**로 합니다.
 
-1. 로그인/재접속 UX PR(`claude/session-reconnect`) 병합 → 교사 비밀번호 재설정 PR (Supabase Redirect URLs 에 `/reset-password` 포함 여부, 메일 발송 한도 확인 필요)
+1. 교사 비밀번호 재설정 PR(`claude/password-reset`) 병합 전: Supabase Redirect URLs 에 `<배포 주소>/reset-password` 추가, 실제 메일로 한 번 확인(메일 수신 → 링크 → 변경 → 새 비밀번호 로그인). 다른 교사도 쓰려면 Custom SMTP 설정
 2. 실제 휴대폰·태블릿에서 질문 분류 활동 확인: long-press drag & drop, swipe scroll, PNG save/share (4번 「질문 분류 활동」의 미검증 항목)
 3. 실제 사용 중 학생 로그인이 풀렸다고 느껴지면: 그때 화면이 「계속하기」였는지 빈 입장 폼이었는지, 기기·브라우저·링크를 연 방법(인앱 브라우저 여부) 기록
 4. 작은 미해결 항목 중 필요한 것 선택 (9번)
@@ -243,6 +252,8 @@
 | `src/lib/supabase.ts` | Supabase 클라이언트 (PUBLISHABLE_KEY 또는 ANON_KEY, 세션은 localStorage 에 유지·자동 갱신) |
 | `src/lib/studentSession.ts`, `src/components/ConnectionRetry.tsx` | 학생 조회(joined / not_joined / 일시적 error 구분, 재시도), 연결 불안정 시 다시 시도 화면 |
 | `src/pages/Home.tsx` | 첫 화면 + 교사·학생 자동 재진입 |
+| `src/pages/teacher/ResetPassword.tsx`, `src/lib/authRedirect.ts` | 비밀번호 재설정 화면(`/reset-password`), 메일 링크 주소(# 값) 읽기와 `RecoveryGate` 용 상태 |
+| `scripts/e2e-password-reset.mjs` | 비밀번호 재설정 브라우저 검증 (`npm run dev` 후 `node scripts/e2e-password-reset.mjs`) |
 | `src/lib/types.ts` | `ClassRoom`, `StudentContext`, `VotingStatus` 등 타입 |
 | `src/lib/errors.ts` | RPC 오류 코드 → 한국어 메시지 |
 | `src/pages/student/StudentJoin.tsx`, `StudentBoard.tsx` | 학생 입장, 질문 쓰기 + 게시판 + 투표 |
@@ -276,6 +287,7 @@
 - 검증: ./scripts/test-db.sh 121/121, scripts/e2e-supabase.mjs 87/87, scripts/e2e-browser.mjs 90/90,
   npm run build 통과, lint 경고 9개는 기존 것
 - 로그인 유지: 첫 화면에서 교사·학생 자동 재진입, 학생 get_my_student 일시 오류는 다시 시도 화면, 클래스 코드 기억하기(localStorage 에 코드만)
+- 교사 비밀번호 재설정: Supabase 기본 recovery 메일 → /reset-password (scripts/e2e-password-reset.mjs 22/22)
 
 규칙:
 - supabase/migrations/20261001000000_init.sql 은 실제 DB 에 적용되었으므로 수정하지 말고, 스키마 변경은 새 migration 파일로 작성

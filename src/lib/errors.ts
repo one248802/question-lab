@@ -23,6 +23,10 @@ const MESSAGES: Record<string, string> = {
   'Invalid login credentials': '이메일 또는 비밀번호가 맞지 않아요.',
   'Email not confirmed': '이메일 인증을 먼저 완료해 주세요.',
   'User already registered': '이미 가입된 이메일이에요.',
+  'should be different from the old password': '지금 쓰는 비밀번호와 다른 새 비밀번호를 넣어 주세요.',
+  'Password should contain': '비밀번호에 영문 대·소문자, 숫자, 기호를 섞어 주세요.',
+  'For security purposes': '잠시 후 다시 요청해 주세요. 보안을 위해 짧은 시간에 여러 번 보낼 수 없어요.',
+  'rate limit exceeded': '메일 보내기 한도를 넘었어요. 잠시 후 다시 시도해 주세요.',
   'Anonymous sign-ins are disabled': 'Supabase에서 익명 로그인(Anonymous Sign-ins)을 켜 주세요.',
 }
 
