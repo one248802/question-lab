@@ -2,6 +2,7 @@
 -- 1) 교사가 숨긴 질문 생각을 학생이 수정해도 자동으로 다시 공개되지 않게 함
 -- 2) 학생 기준 수정 허용을 끄면 교사 기준이 다시 보이게 함(개인 기준 데이터는 보존)
 -- 3) 공개 분류 활동 질문 수에서도 업그레이드 전 질문을 제외
+-- 4) 반환형 변경 때문에 재생성한 list_class_questions() 실행 권한을 다시 제한
 
 create or replace function public.upsert_my_question_thought(p_question_id uuid, p_content text)
 returns uuid
@@ -105,3 +106,6 @@ begin
   order by a.created_at desc;
 end;
 $$;
+
+revoke all on function public.list_class_questions() from public, anon;
+grant execute on function public.list_class_questions() to authenticated;
