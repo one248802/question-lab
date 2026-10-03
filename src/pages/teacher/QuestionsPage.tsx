@@ -11,6 +11,7 @@ import {
   PlayCircle,
   Plus,
   RefreshCw,
+  Search,
   Trash2,
   UserRound,
 } from 'lucide-react'
@@ -25,7 +26,6 @@ import type { QuestionTopic, QuestionTopicStatus, TeacherQuestion } from '../../
 const POLL_MS = 15_000
 
 type Sort = 'new' | 'votes'
-type Visibility = 'all' | 'visible' | 'hidden'
 type DateFilter = 'all' | 'today' | 'week' | 'date'
 
 interface Row extends Omit<TeacherQuestion, 'vote_count'> {
@@ -65,7 +65,7 @@ export default function QuestionsPage() {
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const [visibility, setVisibility] = useState<Visibility>('all')
+  const [search, setSearch] = useState('')
   const [sort, setSort] = useState<Sort>('new')
   const [dateFilter, setDateFilter] = useState<DateFilter>('all')
   const [pickedDate, setPickedDate] = useState(() => localDateKey(new Date()))
@@ -127,6 +127,9 @@ export default function QuestionsPage() {
   useEffect(() => {
     setLoading(true)
     setSelectedTopicIds(new Set())
+    setSearch('')
+    setSort('new')
+    setDateFilter('all')
     load()
     const timer = window.setInterval(() => {
       if (document.visibilityState === 'visible') load()
@@ -156,6 +159,17 @@ export default function QuestionsPage() {
   const shown = useMemo(() => {
     if (selectedTopicIds.size === 0) return []
     let list = questions.filter((q) => Boolean(q.topic_id && selectedTopicIds.has(q.topic_id)))
+
+    const keyword = search.trim().toLocaleLowerCase('ko-KR')
+    if (keyword) {
+      list = list.filter((q) => {
+        const content = q.content.toLocaleLowerCase('ko-KR')
+        const name = q.student?.name?.toLocaleLowerCase('ko-KR') ?? ''
+        const number = q.student?.student_number != null ? String(q.student.student_number) : ''
+        return content.includes(keyword) || name.includes(keyword) || number.includes(keyword)
+      })
+    }
+
     if (dateFilter === 'today') {
       list = list.filter((q) => localDateKey(q.created_at) === todayKey)
     } else if (dateFilter === 'week') {
@@ -164,11 +178,23 @@ export default function QuestionsPage() {
     } else if (dateFilter === 'date' && pickedDate) {
       list = list.filter((q) => localDateKey(q.created_at) === pickedDate)
     }
-    if (visibility === 'visible') list = list.filter((q) => !q.is_hidden)
-    if (visibility === 'hidden') list = list.filter((q) => q.is_hidden)
-    if (sort === 'votes') list = [...list].sort((a, b) => b.vote_count - a.vote_count)
+
+    if (sort === 'votes') {
+      list = [...list].sort(
+        (a, b) => b.vote_count - a.vote_count || new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      )
+    }
     return list
-  }, [questions, selectedTopicIds, dateFilter, todayKey, now, pickedDate, visibility, sort])
+  }, [questions, selectedTopicIds, search, dateFilter, todayKey, now, pickedDate, sort])
+
+  const filtersChanged = search.trim() !== '' || sort !== 'new' || dateFilter !== 'all'
+
+  const resetFilters = () => {
+    setSearch('')
+    setSort('new')
+    setDateFilter('all')
+    setPickedDate(localDateKey(new Date()))
+  }
 
   const flash = (message: string) => {
     setNotice(message)
@@ -419,19 +445,27 @@ export default function QuestionsPage() {
           </div>
 
           {selectedTopicIds.size > 0 && (
-            <>
+            <section className="flex flex-col gap-3 rounded-3xl border-2 border-line bg-paper p-4 shadow-pop">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative min-w-[16rem] flex-1">
+                  <Search className="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-ink-soft" aria-hidden />
+                  <Input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="질문 내용 또는 학생 이름·번호 검색"
+                    aria-label="질문 내용 또는 학생 이름·번호 검색"
+                    className="w-full pl-11"
+                  />
+                </div>
+                {filtersChanged && (
+                  <Button size="sm" variant="ghost" onClick={resetFilters}>
+                    초기화
+                  </Button>
+                )}
+              </div>
+
               <div className="flex flex-wrap items-center gap-3">
-                <ChoiceChips<Visibility>
-                  size="sm"
-                  options={[
-                    { value: 'all', label: '모두' },
-                    { value: 'visible', label: '공개' },
-                    { value: 'hidden', label: '숨김 질문' },
-                  ]}
-                  value={visibility}
-                  onChange={setVisibility}
-                />
-                <span className="hidden h-8 w-0.5 bg-line sm:block" />
+                <span className="text-base font-bold text-ink-soft">정렬</span>
                 <ChoiceChips<Sort>
                   size="sm"
                   options={[
@@ -441,10 +475,8 @@ export default function QuestionsPage() {
                   value={sort}
                   onChange={setSort}
                 />
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="mr-1 text-base font-bold text-ink-soft">날짜</span>
+                <span className="hidden h-8 w-0.5 bg-line sm:block" />
+                <span className="text-base font-bold text-ink-soft">기간</span>
                 <ChoiceChips<DateFilter>
                   size="sm"
                   options={[
@@ -467,7 +499,7 @@ export default function QuestionsPage() {
                   />
                 )}
               </div>
-            </>
+            </section>
           )}
 
           <ErrorBox message={error} />
