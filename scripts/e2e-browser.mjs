@@ -8,7 +8,7 @@
 //   - 매번 새 교사 테스트 계정을 만들고, 끝나면 교사 화면에서 테스트 학급을 지웁니다.
 //     교사 계정과 익명 사용자는 Supabase Authentication → Users 에 남습니다.
 import { chromium } from 'playwright-core'
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const BASE = process.env.BASE_URL || 'http://localhost:5173'
@@ -26,6 +26,8 @@ const shot = (page, name) => page.screenshot({ path: `${SHOTS}${name}.png`, full
 
 const browser = await chromium.launch({
   executablePath: process.env.CHROMIUM_PATH || '/opt/pw-browsers/chromium',
+  // 컨테이너에 로캘이 없으면 한글 다운로드 파일 이름이 'download' 로 바뀌므로 UTF-8 로캘 지정
+  env: { ...process.env, LANG: process.env.LANG || 'C.UTF-8' },
   // Playwright 의 proxy 옵션은 localhost 도 프록시로 보내므로 Chromium 인자로 직접 지정
   args: process.env.HTTPS_PROXY ? [`--proxy-server=${process.env.HTTPS_PROXY}`, '--proxy-bypass-list=localhost;127.0.0.1'] : [],
 })
@@ -70,6 +72,42 @@ const clickVote = async (page, text) => {
   }
   throw new Error(`투표 요청이 나가지 않음: ${text}`)
 }
+// 마우스로 끌어다 놓기 (조금씩 움직여서 dnd-kit 이 끌기로 인식하게)
+const mouseDrag = async (page, source, target) => {
+  const from = await source.boundingBox()
+  const to = await target.boundingBox()
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(from.x + from.width / 2 + 10, from.y + from.height / 2 + 10, { steps: 3 })
+  await page.mouse.move(to.x + to.width / 2, to.y + Math.min(to.height / 2, 60), { steps: 12 })
+  await page.mouse.up()
+  // dnd-kit 은 끌기가 끝난 뒤 0.05초 동안 클릭을 막음(놓을 때 생기는 클릭 방지). 사람처럼 잠깐 쉼
+  await page.waitForTimeout(100)
+}
+// 손가락으로 길게 눌러 끌기 (실제 터치 이벤트를 CDP 로 보냄)
+const touchDrag = async (page, source, target) => {
+  const cdp = await page.context().newCDPSession(page)
+  const from = await source.boundingBox()
+  const to = await target.boundingBox()
+  const point = (x, y) => [{ x, y, id: 1, radiusX: 4, radiusY: 4, force: 1 }]
+  const [fx, fy] = [from.x + from.width / 2, from.y + from.height / 2]
+  const [tx, ty] = [to.x + to.width / 2, to.y + Math.min(to.height / 2, 60)]
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: point(fx, fy) })
+  await page.waitForTimeout(400) // 0.2초 이상 길게 누르기
+  for (let i = 1; i <= 12; i++) {
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: point(fx + ((tx - fx) * i) / 12, fy + ((ty - fy) * i) / 12) })
+    await page.waitForTimeout(30)
+  }
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+  await cdp.detach()
+  await page.waitForTimeout(100)
+}
+// PNG 크기 읽기 (IHDR)
+const pngSize = (buf) =>
+  buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+    ? { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) }
+    : null
+
 const reload = async (page) => {
   await page.reload()
   await page.getByText('우리 반 질문').first().waitFor()
@@ -354,6 +392,70 @@ try {
   await stuA.getByRole('button', { name: '처음으로' }).click()
   await tray.getByRole('button', { name: QA }).waitFor({ timeout: 5000 })
   check('B55 「처음으로」: 모두 미분류로', (await tray.getByRole('button').count()) === 2)
+
+  // drag & drop (마우스) — tap-to-move 와 같은 배치 상태를 씀
+  await mouseDrag(stuA, tray.getByRole('button', { name: QA }), zone('사실'))
+  await zone('사실').getByRole('button', { name: QA }).waitFor({ timeout: 5000 })
+  check('B60 마우스로 끌어서 미분류 → 「사실」', (await tray.getByRole('button').count()) === 1)
+  await mouseDrag(stuA, zone('사실').getByRole('button', { name: QA }), zone('생각'))
+  await zone('생각').getByRole('button', { name: QA }).waitFor({ timeout: 5000 })
+  check('B61 마우스로 끌어서 「사실」 → 「생각」', (await zone('사실').getByRole('button').count()) === 0)
+  await tray.getByRole('button', { name: QC }).click()
+  await zone('느낌').getByRole('button', { name: '여기에 놓기' }).click()
+  check('B62 끌기 뒤에도 tap-to-move 그대로 동작', (await zone('느낌').getByRole('button', { name: QC }).count()) === 1)
+  await mouseDrag(stuA, zone('느낌').getByRole('button', { name: QC }), tray)
+  await tray.getByRole('button', { name: QC }).waitFor({ timeout: 5000 })
+  check('B63 마우스로 끌어서 다시 미분류로', (await zone('느낌').getByRole('button').count()) === 0)
+  await stuA.reload()
+  await zone('생각').getByRole('button', { name: QA }).waitFor({ timeout: 10000 })
+  check('B64 끌어서 옮긴 배치도 새로고침 후 유지 (같은 sessionStorage)', (await tray.getByRole('button', { name: QC }).count()) === 1)
+
+  // 분류 결과 PNG 저장 (학생 기기에만, 서버 요청 없음)
+  const supabaseHost = new URL(process.env.VITE_SUPABASE_URL).host
+  const requestsDuringSave = []
+  const onRequest = (r) => requestsDuringSave.push(r.url())
+  stuA.on('request', onRequest)
+  const downloadPromise = stuA.waitForEvent('download', { timeout: 20000 })
+  await stuA.getByRole('button', { name: '분류 결과 PNG로 저장' }).click()
+  const download = await downloadPromise
+  await stuA.getByText('분류 결과 PNG를 이 기기에 저장했어요.').waitFor({ timeout: 10000 })
+  stuA.off('request', onRequest)
+  const pngPath = `${SHOTS}classification-result.png`
+  await download.saveAs(pngPath)
+  const size = pngSize(readFileSync(pngPath))
+  check('B65 PNG 파일 다운로드 (파일 이름에 번호·이름·날짜)',
+    /^질문분류_.+_1번_김하늘_\d{4}-\d{2}-\d{2}\.png$/.test(download.suggestedFilename()), download.suggestedFilename())
+  check('B66 올바른 PNG 이미지 (너비 3200px)', size?.width === 3200 && size.height > 600, JSON.stringify(size))
+  check('B67 PNG 저장 중 Supabase 요청 없음 (Storage 업로드 없음)',
+    !requestsDuringSave.some((u) => u.includes(supabaseHost)), requestsDuringSave.filter((u) => u.includes(supabaseHost)).join(', '))
+
+  // 휴대폰(터치) 화면: 길게 눌러 끌기, 짧게 누르면 선택
+  const touchCtx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, locale: 'ko-KR' })
+  const phone = await touchCtx.newPage()
+  phone.on('dialog', (d) => d.accept())
+  await phone.goto(`${BASE}/student`)
+  await phone.locator('#code').fill(classCode)
+  await phone.locator('#number').fill('4')
+  await phone.locator('#name').fill('최바람')
+  await phone.getByRole('button', { name: '들어가기' }).click()
+  await phone.waitForURL(`${BASE}/student/board`, { timeout: 15000 })
+  await phone.goto(`${BASE}${new URL(stuA.url()).pathname}`)
+  const pTray = phone.getByRole('region', { name: '아직 분류하지 않은 질문' })
+  await pTray.getByRole('button', { name: QA }).waitFor({ timeout: 10000 })
+  await phone.getByRole('region', { name: '생각' }).scrollIntoViewIfNeeded()
+  await pTray.getByRole('button', { name: QA }).scrollIntoViewIfNeeded()
+  await touchDrag(phone, pTray.getByRole('button', { name: QA }), phone.getByRole('region', { name: '사실' }))
+  await phone.getByRole('region', { name: '사실' }).getByRole('button', { name: QA }).waitFor({ timeout: 5000 })
+  check('B68 터치: 길게 눌러 끌어서 「사실」로 이동', (await pTray.getByRole('button').count()) === 1)
+  await pTray.getByRole('button', { name: QC }).tap()
+  check('B69 터치: 짧게 누르면 카드 선택 (tap-to-move)',
+    (await pTray.getByRole('button', { name: QC }).getAttribute('aria-pressed')) === 'true')
+  await phone.getByRole('region', { name: '느낌' }).getByRole('button', { name: '여기에 놓기' }).tap()
+  check('B70 터치: 「여기에 놓기」로 이동', (await phone.getByRole('region', { name: '느낌' }).getByRole('button', { name: QC }).count()) === 1)
+  const phoneOverflow = await phone.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+  check('B71 휴대폰 폭 분류 화면 가로 스크롤 없음', phoneOverflow <= 0, `${phoneOverflow}px`)
+  await shot(phone, '13-student-activity-phone')
+  await touchCtx.close()
 
   await actCard.getByRole('button', { name: '수정' }).click()
   await teacher.getByLabel('영역 3 이름').fill('궁금함')
