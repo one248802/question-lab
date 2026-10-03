@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
-import { Eye, EyeOff, Lightbulb, Plus, Trash2, Trophy } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Eye, EyeOff, Lightbulb, Plus, Settings, Trash2, Trophy } from 'lucide-react'
 import { ClassPicker, NoClassYet } from '../../components/ClassPicker'
-import { Badge, Button, Card, EmptyState, ErrorBox, Input, Label, PageTitle, Spinner, Toggle } from '../../components/ui'
+import { Badge, Button, Card, EmptyState, ErrorBox, Input, Label, PageTitle, Spinner } from '../../components/ui'
 import { useTeacher } from '../../contexts/TeacherContext'
 import { toMessage } from '../../lib/errors'
 import { supabase } from '../../lib/supabase'
@@ -13,15 +14,17 @@ type Topic = {
   is_open: boolean
   results_visible: boolean
   max_votes: number
+  max_items_per_student: number
   created_at: string
 }
 
 type TeacherThoughtItem = {
   id: string
   topic_id: string
-  student_id: string
+  student_id: string | null
   content: string
   is_hidden: boolean
+  created_by_teacher: boolean
   created_at: string
   student_number: number | null
   student_name: string | null
@@ -34,7 +37,11 @@ export default function ThoughtTopicsPage() {
 
   return (
     <>
-      <PageTitle icon={<Lightbulb className="size-9 text-mint-ink" />} title="생각 상자" right={classes.length > 0 && <ClassPicker />} />
+      <PageTitle
+        icon={<Lightbulb className="size-9 text-mint-ink" />}
+        title="생각 상자"
+        right={classes.length > 0 && <ClassPicker />}
+      />
       {classes.length === 0 || !selectedClassId ? <NoClassYet /> : <ClassThoughtTopics key={selectedClassId} classId={selectedClassId} />}
     </>
   )
@@ -44,17 +51,20 @@ function ClassThoughtTopics({ classId }: { classId: string }) {
   const [topics, setTopics] = useState<Topic[]>([])
   const [title, setTitle] = useState('')
   const [maxVotes, setMaxVotes] = useState('1')
+  const [maxItems, setMaxItems] = useState('3')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [items, setItems] = useState<TeacherThoughtItem[]>([])
   const [itemsLoading, setItemsLoading] = useState(false)
+  const [candidateDraft, setCandidateDraft] = useState('')
+  const [candidateBusy, setCandidateBusy] = useState(false)
 
   const load = useCallback(async () => {
     const { data, error: err } = await supabase
       .from('thought_topics')
-      .select('id, class_id, title, is_open, results_visible, max_votes, created_at')
+      .select('id, class_id, title, is_open, results_visible, max_votes, max_items_per_student, created_at')
       .eq('class_id', classId)
       .order('created_at', { ascending: false })
     if (err) setError(toMessage(err))
@@ -71,32 +81,29 @@ function ClassThoughtTopics({ classId }: { classId: string }) {
     e.preventDefault()
     const t = title.trim()
     const votes = Number(maxVotes)
+    const itemLimit = Number(maxItems)
     if (!t) return setError('생각 주제를 적어 주세요.')
     if (!Number.isInteger(votes) || votes < 1 || votes > 10) return setError('투표 개수는 1~10개로 정해 주세요.')
+    if (!Number.isInteger(itemLimit) || itemLimit < 0 || itemLimit > 10) return setError('학생 생각 등록 수는 0~10개로 정해 주세요.')
     setSaving(true)
     setError(null)
-    const { error: err } = await supabase.from('thought_topics').insert({ class_id: classId, title: t, max_votes: votes })
+    const { error: err } = await supabase.from('thought_topics').insert({ class_id: classId, title: t, max_votes: votes, max_items_per_student: itemLimit })
     setSaving(false)
     if (err) return setError(toMessage(err))
     setTitle('')
     setMaxVotes('1')
-    await load()
-  }
-
-  const update = async (topic: Topic, patch: Partial<Pick<Topic, 'is_open' | 'results_visible' | 'max_votes'>>) => {
-    setError(null)
-    const { error: err } = await supabase.from('thought_topics').update(patch).eq('id', topic.id)
-    if (err) return setError(toMessage(err))
+    setMaxItems('3')
     await load()
   }
 
   const remove = async (topic: Topic) => {
-    if (!window.confirm(`「${topic.title}」 생각 주제를 삭제할까요?\n\n학생들이 올린 생각과 투표도 함께 삭제돼요.`)) return
+    if (!window.confirm(`「${topic.title}」 생각 주제를 삭제할까요?\n\n올라온 생각과 투표도 함께 삭제돼요.`)) return
     const { error: err } = await supabase.from('thought_topics').delete().eq('id', topic.id)
     if (err) return setError(toMessage(err))
     if (expandedId === topic.id) {
       setExpandedId(null)
       setItems([])
+      setCandidateDraft('')
     }
     await load()
   }
@@ -104,7 +111,7 @@ function ClassThoughtTopics({ classId }: { classId: string }) {
   const fetchItems = async (topic: Topic) => {
     setItemsLoading(true)
     const [itemResult, voteResult, studentResult] = await Promise.all([
-      supabase.from('thought_items').select('id, topic_id, student_id, content, is_hidden, created_at').eq('topic_id', topic.id).order('created_at'),
+      supabase.from('thought_items').select('id, topic_id, student_id, content, is_hidden, created_by_teacher, created_at').eq('topic_id', topic.id).order('created_at'),
       supabase.from('thought_votes').select('item_id'),
       supabase.from('students').select('id, student_number, name').eq('class_id', classId),
     ])
@@ -118,7 +125,7 @@ function ClassThoughtTopics({ classId }: { classId: string }) {
     for (const row of voteResult.data ?? []) votes.set(row.item_id as string, (votes.get(row.item_id as string) ?? 0) + 1)
     const students = new Map((studentResult.data ?? []).map((s) => [s.id as string, s]))
     setItems((itemResult.data ?? []).map((i) => {
-      const s = students.get(i.student_id as string)
+      const s = i.student_id ? students.get(i.student_id as string) : undefined
       return {
         ...(i as Omit<TeacherThoughtItem, 'student_number' | 'student_name' | 'vote_count'>),
         student_number: s?.student_number ?? null,
@@ -133,9 +140,24 @@ function ClassThoughtTopics({ classId }: { classId: string }) {
     if (expandedId === topic.id) {
       setExpandedId(null)
       setItems([])
+      setCandidateDraft('')
       return
     }
     setExpandedId(topic.id)
+    setCandidateDraft('')
+    await fetchItems(topic)
+  }
+
+  const addTeacherCandidate = async (topic: Topic) => {
+    const content = candidateDraft.trim()
+    if (!content) return setError('후보 내용을 적어 주세요.')
+    if (content.length > 120) return setError('후보는 120자까지 쓸 수 있어요.')
+    setCandidateBusy(true)
+    setError(null)
+    const { error: err } = await supabase.rpc('create_teacher_thought_item', { p_topic_id: topic.id, p_content: content })
+    setCandidateBusy(false)
+    if (err) return setError(toMessage(err))
+    setCandidateDraft('')
     await fetchItems(topic)
   }
 
@@ -147,7 +169,7 @@ function ClassThoughtTopics({ classId }: { classId: string }) {
   }
 
   const deleteItem = async (item: TeacherThoughtItem) => {
-    if (!window.confirm('이 학생 생각을 삭제할까요?')) return
+    if (!window.confirm('이 생각 후보를 삭제할까요?')) return
     const { error: err } = await supabase.from('thought_items').delete().eq('id', item.id)
     if (err) return setError(toMessage(err))
     const topic = topics.find((t) => t.id === item.topic_id)
@@ -158,14 +180,22 @@ function ClassThoughtTopics({ classId }: { classId: string }) {
 
   return (
     <div className="flex flex-col gap-5">
-      <p className="text-lg text-ink-soft">주제를 열면 학생들이 자유롭게 생각을 올리고 정해진 수만큼 투표할 수 있어요. 결과 공개를 켜면 학생 화면에 득표 수와 1~3위 시상대가 보여요.</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-lg text-ink-soft">주제를 만들고 학생 생각 또는 선생님 후보를 모아 투표할 수 있어요.</p>
+        <Link to="/teacher/thought-settings"><Button variant="secondary"><Settings className="size-5" aria-hidden />생각 상자 설정</Button></Link>
+      </div>
       <ErrorBox message={error} />
 
       <Card className="bg-mint-soft/40">
-        <form onSubmit={create} className="grid gap-4 md:grid-cols-[1fr_8rem_auto] md:items-end">
+        <form onSubmit={create} className="grid gap-4 lg:grid-cols-[1fr_9rem_9rem_auto] lg:items-end">
           <div>
             <Label htmlFor="thought-topic-title">새 생각 주제</Label>
             <Input id="thought-topic-title" value={title} onChange={(e) => setTitle(e.target.value.slice(0, 120))} maxLength={120} placeholder="예: 우리 반 파티에서 먹고 싶은 음식은?" />
+          </div>
+          <div>
+            <Label htmlFor="thought-max-items">1인당 생각</Label>
+            <Input id="thought-max-items" type="number" min={0} max={10} value={maxItems} onChange={(e) => setMaxItems(e.target.value)} />
+            <p className="mt-1 text-xs text-ink-soft">0 = 교사 후보만</p>
           </div>
           <div>
             <Label htmlFor="thought-max-votes">1인당 표</Label>
@@ -188,36 +218,36 @@ function ClassThoughtTopics({ classId }: { classId: string }) {
                     <Badge className={topic.is_open ? 'bg-mint-soft text-mint-ink' : 'bg-line text-ink-soft'}>{topic.is_open ? '학생 참여 중' : '참여 닫힘'}</Badge>
                     {topic.results_visible && <Badge className="bg-butter-soft text-butter-ink"><Trophy className="mr-1 size-4" aria-hidden />결과 공개</Badge>}
                     <Badge className="bg-sky-soft text-sky-ink">1인 {topic.max_votes}표</Badge>
+                    <Badge className="bg-lilac-soft text-lilac-ink">학생 생각 {topic.max_items_per_student}개</Badge>
                   </div>
                 </div>
                 <Button variant="danger" size="sm" onClick={() => remove(topic)}><Trash2 className="size-4" aria-hidden />삭제</Button>
               </div>
 
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <div className="flex items-center justify-between gap-3 rounded-2xl bg-cream px-4 py-3">
-                  <div><p className="font-bold">학생 참여</p><p className="text-sm text-ink-soft">생각 등록과 투표를 열고 닫아요.</p></div>
-                  <Toggle label={`${topic.title} 학생 참여`} checked={topic.is_open} onChange={(next) => update(topic, { is_open: next })} />
-                </div>
-                <div className="flex items-center justify-between gap-3 rounded-2xl bg-cream px-4 py-3">
-                  <div><p className="font-bold">결과 공개</p><p className="text-sm text-ink-soft">득표 수와 랭킹을 학생에게 보여요.</p></div>
-                  <Toggle label={`${topic.title} 결과 공개`} checked={topic.results_visible} onChange={(next) => update(topic, { results_visible: next })} />
-                </div>
-              </div>
-
               <div className="mt-4 flex flex-wrap gap-2">
-                <Button variant="secondary" size="sm" onClick={() => toggleItems(topic)}>{expandedId === topic.id ? '학생 생각 닫기' : '학생 생각·투표 보기'}</Button>
+                <Button variant="secondary" size="sm" onClick={() => toggleItems(topic)}>{expandedId === topic.id ? '후보 닫기' : '생각 후보·투표 보기'}</Button>
+                <Link to="/teacher/thought-settings"><Button variant="ghost" size="sm"><Settings className="size-4" aria-hidden />참여·투표 설정</Button></Link>
               </div>
 
               {expandedId === topic.id && (
                 <div className="mt-4 border-t-2 border-line pt-4">
+                  <div className="mb-4 rounded-2xl bg-mint-soft/40 p-4">
+                    <p className="mb-2 font-bold">선생님 후보 추가</p>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <Input value={candidateDraft} onChange={(e) => setCandidateDraft(e.target.value.slice(0, 120))} maxLength={120} placeholder="학생 발표를 듣고 후보를 직접 적어도 돼요." />
+                      <Button variant="mint" onClick={() => addTeacherCandidate(topic)} loading={candidateBusy}><Plus className="size-4" aria-hidden />후보 추가</Button>
+                    </div>
+                    {topic.max_items_per_student === 0 && <p className="mt-2 text-sm font-bold text-mint-ink">학생 생각 등록은 0개예요. 학생은 선생님이 올린 후보에 투표만 해요.</p>}
+                  </div>
+
                   {itemsLoading ? <Spinner /> : items.length === 0 ? (
-                    <p className="text-ink-soft">아직 학생이 올린 생각이 없어요.</p>
+                    <p className="text-ink-soft">아직 올라온 생각 후보가 없어요.</p>
                   ) : (
                     <ul className="grid gap-2 md:grid-cols-2">
                       {[...items].sort((a, b) => b.vote_count - a.vote_count).map((item) => (
                         <li key={item.id} className={`rounded-2xl border-2 p-4 ${item.is_hidden ? 'border-pink bg-pink-soft/30' : 'border-line bg-cream'}`}>
                           <div className="mb-2 flex items-center justify-between gap-2">
-                            <span className="font-bold">{item.student_number ?? '?'}번 {item.student_name ?? '학생'}</span>
+                            <span className="font-bold">{item.created_by_teacher ? '선생님 후보' : `${item.student_number ?? '?'}번 ${item.student_name ?? '학생'}`}</span>
                             <Badge className="bg-butter-soft text-butter-ink">{item.vote_count}표</Badge>
                           </div>
                           <p className="break-words text-lg">{item.content}</p>
