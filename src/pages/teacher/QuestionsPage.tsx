@@ -288,6 +288,7 @@ export default function QuestionsPage() {
               <div>
                 <h2 className="font-display text-2xl sm:text-3xl">질문 주제 관리</h2>
                 <p className="mt-1 text-base text-ink-soft">질문을 나중에 폴더로 옮기지 않고, 먼저 주제를 만든 뒤 상태를 관리합니다.</p>
+                <p className="mt-1 text-sm font-bold text-sky-ink">주제 이름을 누르면 아래에서 그 주제의 질문만 볼 수 있어요.</p>
               </div>
               <div className="flex w-full gap-2 sm:w-auto">
                 <Input
@@ -320,16 +321,33 @@ export default function QuestionsPage() {
                 {topics.map((topic) => {
                   const busy = topicBusy === topic.id
                   const meta = STATUS_META[topic.status]
+                  const selectedTopic = topicFilter === topic.id
                   return (
-                    <li key={topic.id} className="rounded-2xl border-2 border-line bg-cream/40 p-4">
+                    <li
+                      key={topic.id}
+                      className={cx(
+                        'rounded-2xl border-2 bg-cream/40 p-4 transition',
+                        selectedTopic ? 'border-sky ring-2 ring-sky/30' : 'border-line',
+                      )}
+                    >
                       <div className="flex flex-wrap items-start justify-between gap-2">
-                        <div className="min-w-0">
+                        <button
+                          type="button"
+                          onClick={() => setTopicFilter(selectedTopic ? null : topic.id)}
+                          className={cx(
+                            'min-w-0 flex-1 rounded-xl p-1 text-left transition hover:bg-sky-soft/50 focus:outline-none focus:ring-2 focus:ring-sky',
+                            selectedTopic && 'bg-sky-soft/60',
+                          )}
+                          aria-pressed={selectedTopic}
+                          aria-label={`${topic.name} 질문 ${topicCounts.get(topic.id) ?? 0}개 보기`}
+                        >
                           <div className="flex flex-wrap items-center gap-2">
                             <h3 className="text-xl font-bold break-words">{topic.name}</h3>
                             <Badge className={meta.className}>{meta.label}</Badge>
                           </div>
                           <p className="mt-1 text-sm text-ink-soft">{meta.description} · 현재 질문 {topicCounts.get(topic.id) ?? 0}개</p>
-                        </div>
+                          {selectedTopic && <p className="mt-1 text-sm font-bold text-sky-ink">아래에 이 주제의 질문을 표시하고 있어요.</p>}
+                        </button>
                         <Button variant="ghost" size="sm" onClick={() => renameTopic(topic)} disabled={busy}>
                           <Pencil className="size-4" aria-hidden />이름 수정
                         </Button>
@@ -356,21 +374,16 @@ export default function QuestionsPage() {
             )}
           </section>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="mr-1 text-base font-bold text-ink-soft">질문 주제</span>
-            <Button size="sm" variant={topicFilter === null ? 'sky' : 'secondary'} onClick={() => setTopicFilter(null)}>
-              전체 {questions.length}
-            </Button>
-            {topics.map((topic) => (
-              <Button
-                key={topic.id}
-                size="sm"
-                variant={topicFilter === topic.id ? 'sky' : 'secondary'}
-                onClick={() => setTopicFilter(topic.id)}
-              >
-                {topic.name} {topicCounts.get(topic.id) ?? 0}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="font-display text-2xl sm:text-3xl">{currentTopic ? `「${currentTopic.name}」 질문` : '전체 질문'}</h2>
+              <p className="mt-1 text-sm text-ink-soft">현재 조건에 맞는 질문 {shown.length}개</p>
+            </div>
+            {currentTopic && (
+              <Button size="sm" variant="secondary" onClick={() => setTopicFilter(null)}>
+                전체 질문 보기
               </Button>
-            ))}
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
