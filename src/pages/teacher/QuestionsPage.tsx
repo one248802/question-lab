@@ -18,7 +18,7 @@ import {
 import { ClassPicker, NoClassYet } from '../../components/ClassPicker'
 import { Badge, Button, ChoiceChips, EmptyState, ErrorBox, Input, PageTitle, Spinner, cx } from '../../components/ui'
 import { useTeacher } from '../../contexts/TeacherContext'
-import { formatDateTime, localDateKey, startOfWeek } from '../../lib/date'
+import { formatDateTime, localDateKey } from '../../lib/date'
 import { toMessage } from '../../lib/errors'
 import { supabase } from '../../lib/supabase'
 import type { QuestionTopic, QuestionTopicStatus, TeacherQuestion } from '../../lib/types'
@@ -26,7 +26,7 @@ import type { QuestionTopic, QuestionTopicStatus, TeacherQuestion } from '../../
 const POLL_MS = 15_000
 
 type Sort = 'new' | 'votes'
-type DateFilter = 'all' | 'today' | 'week' | 'date'
+type DateFilter = 'all' | 'today' | 'month' | 'range'
 
 interface Row extends Omit<TeacherQuestion, 'vote_count'> {
   votes: Array<{ count: number }>
@@ -68,7 +68,8 @@ export default function QuestionsPage() {
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<Sort>('new')
   const [dateFilter, setDateFilter] = useState<DateFilter>('all')
-  const [pickedDate, setPickedDate] = useState(() => localDateKey(new Date()))
+  const [rangeStart, setRangeStart] = useState(() => localDateKey(new Date()))
+  const [rangeEnd, setRangeEnd] = useState(() => localDateKey(new Date()))
   const [selectedTopicIds, setSelectedTopicIds] = useState<Set<string>>(() => new Set())
   const [newTopicName, setNewTopicName] = useState('')
   const [topicBusy, setTopicBusy] = useState<string | null>(null)
@@ -130,6 +131,8 @@ export default function QuestionsPage() {
     setSearch('')
     setSort('new')
     setDateFilter('all')
+    setRangeStart(localDateKey(new Date()))
+    setRangeEnd(localDateKey(new Date()))
     load()
     const timer = window.setInterval(() => {
       if (document.visibilityState === 'visible') load()
@@ -172,11 +175,14 @@ export default function QuestionsPage() {
 
     if (dateFilter === 'today') {
       list = list.filter((q) => localDateKey(q.created_at) === todayKey)
-    } else if (dateFilter === 'week') {
-      const from = startOfWeek(new Date(now)).getTime()
-      list = list.filter((q) => new Date(q.created_at).getTime() >= from)
-    } else if (dateFilter === 'date' && pickedDate) {
-      list = list.filter((q) => localDateKey(q.created_at) === pickedDate)
+    } else if (dateFilter === 'month') {
+      const monthKey = todayKey.slice(0, 7)
+      list = list.filter((q) => localDateKey(q.created_at).slice(0, 7) === monthKey)
+    } else if (dateFilter === 'range' && rangeStart && rangeEnd) {
+      list = list.filter((q) => {
+        const key = localDateKey(q.created_at)
+        return key >= rangeStart && key <= rangeEnd
+      })
     }
 
     if (sort === 'votes') {
@@ -185,15 +191,17 @@ export default function QuestionsPage() {
       )
     }
     return list
-  }, [questions, selectedTopicIds, search, dateFilter, todayKey, now, pickedDate, sort])
+  }, [questions, selectedTopicIds, search, dateFilter, todayKey, rangeStart, rangeEnd, sort])
 
   const filtersChanged = search.trim() !== '' || sort !== 'new' || dateFilter !== 'all'
 
   const resetFilters = () => {
+    const today = localDateKey(new Date())
     setSearch('')
     setSort('new')
     setDateFilter('all')
-    setPickedDate(localDateKey(new Date()))
+    setRangeStart(today)
+    setRangeEnd(today)
   }
 
   const flash = (message: string) => {
@@ -407,16 +415,40 @@ export default function QuestionsPage() {
                         </button>
 
                         <div className="flex shrink-0 flex-nowrap items-center gap-2 overflow-x-auto">
-                          <Button size="sm" variant={topic.status === 'active' ? 'mint' : 'secondary'} onClick={() => changeTopicStatus(topic, 'active')} disabled={busy || topic.status === 'active'}>
+                          <Button
+                            size="sm"
+                            variant={topic.status === 'active' ? 'mint' : 'secondary'}
+                            onClick={() => changeTopicStatus(topic, 'active')}
+                            disabled={busy || topic.status === 'active'}
+                            className="w-24 shrink-0 hover:translate-y-0 active:translate-y-0 active:shadow-pop-sm"
+                          >
                             <PlayCircle className="size-4" aria-hidden />진행 중
                           </Button>
-                          <Button size="sm" variant={topic.status === 'archived' ? 'sky' : 'secondary'} onClick={() => changeTopicStatus(topic, 'archived')} disabled={busy || topic.status === 'archived'}>
+                          <Button
+                            size="sm"
+                            variant={topic.status === 'archived' ? 'sky' : 'secondary'}
+                            onClick={() => changeTopicStatus(topic, 'archived')}
+                            disabled={busy || topic.status === 'archived'}
+                            className="w-24 shrink-0 hover:translate-y-0 active:translate-y-0 active:shadow-pop-sm"
+                          >
                             <Archive className="size-4" aria-hidden />보관
                           </Button>
-                          <Button size="sm" variant="secondary" onClick={() => changeTopicStatus(topic, 'hidden')} disabled={busy || topic.status === 'hidden'}>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => changeTopicStatus(topic, 'hidden')}
+                            disabled={busy || topic.status === 'hidden'}
+                            className="w-24 shrink-0 hover:translate-y-0 active:translate-y-0 active:shadow-pop-sm"
+                          >
                             <EyeOff className="size-4" aria-hidden />숨김
                           </Button>
-                          <Button size="sm" variant="danger" onClick={() => deleteTopic(topic)} disabled={busy}>
+                          <Button
+                            size="sm"
+                            variant="danger"
+                            onClick={() => deleteTopic(topic)}
+                            disabled={busy}
+                            className="w-24 shrink-0 hover:translate-y-0 active:translate-y-0 active:shadow-pop-sm"
+                          >
                             <Trash2 className="size-4" aria-hidden />삭제
                           </Button>
                         </div>
@@ -482,21 +514,41 @@ export default function QuestionsPage() {
                   options={[
                     { value: 'all', label: '전체' },
                     { value: 'today', label: '오늘' },
-                    { value: 'week', label: '이번 주' },
-                    { value: 'date', label: '날짜 선택' },
+                    { value: 'month', label: '이번 달' },
+                    { value: 'range', label: '기간 선택' },
                   ]}
                   value={dateFilter}
                   onChange={setDateFilter}
                 />
-                {dateFilter === 'date' && (
-                  <Input
-                    type="date"
-                    value={pickedDate}
-                    max={todayKey}
-                    onChange={(e) => setPickedDate(e.target.value)}
-                    aria-label="질문 날짜"
-                    className="min-h-10 w-auto text-base"
-                  />
+                {dateFilter === 'range' && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Input
+                      type="date"
+                      value={rangeStart}
+                      max={todayKey}
+                      onChange={(e) => {
+                        const next = e.target.value
+                        setRangeStart(next)
+                        if (rangeEnd && next > rangeEnd) setRangeEnd(next)
+                      }}
+                      aria-label="기간 시작일"
+                      className="min-h-10 w-auto text-base"
+                    />
+                    <span className="font-bold text-ink-soft">~</span>
+                    <Input
+                      type="date"
+                      value={rangeEnd}
+                      min={rangeStart}
+                      max={todayKey}
+                      onChange={(e) => {
+                        const next = e.target.value
+                        setRangeEnd(next)
+                        if (rangeStart && next < rangeStart) setRangeStart(next)
+                      }}
+                      aria-label="기간 종료일"
+                      className="min-h-10 w-auto text-base"
+                    />
+                  </div>
                 )}
               </div>
             </section>
