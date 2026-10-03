@@ -1,96 +1,132 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Clock, Eye, EyeOff, Folder, Heart, Inbox, MessageCircleQuestion, RefreshCw, Trash2, UserRound } from 'lucide-react'
+import {
+  Archive,
+  Clock,
+  Eye,
+  EyeOff,
+  Heart,
+  Inbox,
+  MessageCircleQuestion,
+  Pencil,
+  PlayCircle,
+  Plus,
+  RefreshCw,
+  Trash2,
+  UserRound,
+} from 'lucide-react'
 import { ClassPicker, NoClassYet } from '../../components/ClassPicker'
-import { FolderBar, SelectionBar } from '../../components/QuestionFolders'
 import { Badge, Button, ChoiceChips, EmptyState, ErrorBox, Input, PageTitle, Spinner, cx } from '../../components/ui'
 import { useTeacher } from '../../contexts/TeacherContext'
 import { formatDateTime, localDateKey, startOfWeek } from '../../lib/date'
 import { toMessage } from '../../lib/errors'
 import { supabase } from '../../lib/supabase'
-import { NO_FOLDER_FILTER, type QuestionFolder, type TeacherQuestion } from '../../lib/types'
+import type { QuestionTopic, QuestionTopicStatus, TeacherQuestion } from '../../lib/types'
 
 const POLL_MS = 15_000
 
 type Sort = 'new' | 'votes'
 type Visibility = 'all' | 'visible' | 'hidden'
-// 날짜별 보기 (질문의 created_at, 브라우저 시간 기준)
 type DateFilter = 'all' | 'today' | 'week' | 'date'
-
-interface FolderRow extends Omit<QuestionFolder, 'question_ids'> {
-  question_folder_items: Array<{ question_id: string }>
-}
-
-function folderError(err: unknown) {
-  const msg = toMessage(err)
-  return msg.includes('duplicate key') ? '이미 같은 이름의 폴더가 있어요.' : msg
-}
 
 interface Row extends Omit<TeacherQuestion, 'vote_count'> {
   votes: Array<{ count: number }>
+}
+
+const STATUS_META: Record<QuestionTopicStatus, { label: string; description: string; className: string }> = {
+  active: {
+    label: '진행 중',
+    description: '학생이 현재 참여하는 질문 주제',
+    className: 'bg-mint-soft text-mint-ink',
+  },
+  archived: {
+    label: '보관',
+    description: '새 질문 작성은 끝났지만 기록은 남기는 주제',
+    className: 'bg-sky-soft text-sky-ink',
+  },
+  hidden: {
+    label: '숨김',
+    description: '학생에게는 보이지 않고 교사만 확인하는 주제',
+    className: 'bg-line text-ink-soft',
+  },
+}
+
+function topicError(err: unknown) {
+  const msg = toMessage(err)
+  if (msg.includes('duplicate key')) return '이미 같은 이름의 질문 주제가 있어요.'
+  return msg
 }
 
 export default function QuestionsPage() {
   const { classes, loading: classesLoading, selectedClassId, reload: reloadStats } = useTeacher()
 
   const [questions, setQuestions] = useState<TeacherQuestion[]>([])
+  const [topics, setTopics] = useState<QuestionTopic[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [visibility, setVisibility] = useState<Visibility>('all')
   const [sort, setSort] = useState<Sort>('new')
   const [dateFilter, setDateFilter] = useState<DateFilter>('all')
   const [pickedDate, setPickedDate] = useState(() => localDateKey(new Date()))
-  const [folders, setFolders] = useState<QuestionFolder[]>([])
-  const [folderLoadError, setFolderLoadError] = useState<string | null>(null)
-  const [folderFilter, setFolderFilter] = useState<string | null>(null)
-  const [selected, setSelected] = useState<Set<string>>(() => new Set())
-  const [notice, setNotice] = useState<string | null>(null)
-  // 「오늘」「이번 주」 기준 시각. 목록을 새로 불러올 때마다 갱신 (자정이 지나도 다음 새로고침 때 맞춰짐)
+  const [topicFilter, setTopicFilter] = useState<string | null>(null)
+  const [newTopicName, setNewTopicName] = useState('')
+  const [topicBusy, setTopicBusy] = useState<string | null>(null)
+  const [creatingTopic, setCreatingTopic] = useState(false)
   const [now, setNow] = useState(() => Date.now())
   const todayKey = localDateKey(new Date(now))
 
-  // 폴더는 질문 목록과 따로 불러옴: 폴더를 못 불러와도 질문 보기·숨기기·삭제는 그대로 쓸 수 있게
-  const loadFolders = useCallback(async () => {
+  const loadTopics = useCallback(async () => {
     if (!selectedClassId) return
     const { data, error: err } = await supabase
-      .from('question_folders')
-      .select('id, class_id, name, created_at, question_folder_items(question_id)')
+      .from('question_topics')
+      .select('id, class_id, name, status, created_at, updated_at')
       .eq('class_id', selectedClassId)
       .order('created_at', { ascending: true })
-    if (err) return setFolderLoadError(`폴더를 불러오지 못했어요. ${toMessage(err)}`)
-    setFolderLoadError(null)
-    setFolders(
-      ((data ?? []) as unknown as FolderRow[]).map(({ question_folder_items, ...f }) => ({
-        ...f,
-        question_ids: (question_folder_items ?? []).map((i) => i.question_id),
-      })),
-    )
+
+    if (err) {
+      setError(`질문 주제를 불러오지 못했어요. ${toMessage(err)}`)
+      return
+    }
+    setTopics((data ?? []) as QuestionTopic[])
   }, [selectedClassId])
 
   const load = useCallback(async () => {
     if (!selectedClassId) return
-    loadFolders()
-    const { data, error: err } = await supabase
-      .from('questions')
-      .select(
-        'id, class_id, student_id, content, is_hidden, created_at, student:students(student_number, name), votes(count)',
-      )
-      .eq('class_id', selectedClassId)
-      .is('superseded_at', null)
-      .order('created_at', { ascending: false })
+    const [topicResult, questionResult] = await Promise.all([
+      supabase
+        .from('question_topics')
+        .select('id, class_id, name, status, created_at, updated_at')
+        .eq('class_id', selectedClassId)
+        .order('created_at', { ascending: true }),
+      supabase
+        .from('questions')
+        .select('id, class_id, student_id, topic_id, content, is_hidden, created_at, student:students(student_number, name), votes(count)')
+        .eq('class_id', selectedClassId)
+        .is('superseded_at', null)
+        .order('created_at', { ascending: false }),
+    ])
+
     setNow(Date.now())
-    if (err) setError(toMessage(err))
+    if (topicResult.error) setError(`질문 주제를 불러오지 못했어요. ${toMessage(topicResult.error)}`)
+    else setTopics((topicResult.data ?? []) as QuestionTopic[])
+
+    if (questionResult.error) setError(toMessage(questionResult.error))
     else {
-      setError(null)
       setQuestions(
-        ((data ?? []) as unknown as Row[]).map(({ votes, ...q }) => ({ ...q, vote_count: votes?.[0]?.count ?? 0 })),
+        ((questionResult.data ?? []) as unknown as Row[]).map(({ votes, ...q }) => ({
+          ...q,
+          vote_count: votes?.[0]?.count ?? 0,
+        })),
       )
+      if (!topicResult.error) setError(null)
     }
     setLoading(false)
-  }, [selectedClassId, loadFolders])
+  }, [selectedClassId])
 
   useEffect(() => {
     setLoading(true)
+    setTopicFilter(null)
     load()
     const timer = window.setInterval(() => {
       if (document.visibilityState === 'visible') load()
@@ -98,14 +134,17 @@ export default function QuestionsPage() {
     return () => window.clearInterval(timer)
   }, [load])
 
-  // 다른 학급으로 바꾸면 그 학급에 없는 폴더는 자동으로 「전체 질문」
-  const currentFolder = folders.find((f) => f.id === folderFilter) ?? null
-  const noFolderFilter = folderFilter === NO_FOLDER_FILTER
-  // 어느 폴더에든 들어 있는 질문 id
-  const inSomeFolder = useMemo(() => new Set(folders.flatMap((f) => f.question_ids)), [folders])
-  const unfolderedCount = useMemo(() => questions.filter((q) => !inSomeFolder.has(q.id)).length, [questions, inSomeFolder])
+  const currentTopic = topics.find((topic) => topic.id === topicFilter) ?? null
+  const topicNames = useMemo(() => new Map(topics.map((topic) => [topic.id, topic.name])), [topics])
+  const topicCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const question of questions) {
+      if (!question.topic_id) continue
+      counts.set(question.topic_id, (counts.get(question.topic_id) ?? 0) + 1)
+    }
+    return counts
+  }, [questions])
 
-  // 날짜·폴더·공개 여부 필터를 함께 적용
   const shown = useMemo(() => {
     let list = questions
     if (dateFilter === 'today') {
@@ -116,135 +155,99 @@ export default function QuestionsPage() {
     } else if (dateFilter === 'date' && pickedDate) {
       list = list.filter((q) => localDateKey(q.created_at) === pickedDate)
     }
-    if (currentFolder) {
-      const ids = new Set(currentFolder.question_ids)
-      list = list.filter((q) => ids.has(q.id))
-    } else if (noFolderFilter) {
-      list = list.filter((q) => !inSomeFolder.has(q.id))
-    }
+    if (currentTopic) list = list.filter((q) => q.topic_id === currentTopic.id)
     if (visibility === 'visible') list = list.filter((q) => !q.is_hidden)
     if (visibility === 'hidden') list = list.filter((q) => q.is_hidden)
     if (sort === 'votes') list = [...list].sort((a, b) => b.vote_count - a.vote_count)
     return list
-  }, [questions, dateFilter, todayKey, now, pickedDate, currentFolder, noFolderFilter, inSomeFolder, visibility, sort])
-
-  // 선택은 지금 보이는 질문 중에서만 셈 (필터를 바꾸면 안 보이는 질문은 선택에서 빠짐)
-  const selectedShown = useMemo(() => shown.filter((q) => selected.has(q.id)), [shown, selected])
-  const folderNamesOf = useMemo(() => {
-    const map = new Map<string, string[]>()
-    for (const f of folders) for (const id of f.question_ids) map.set(id, [...(map.get(id) ?? []), f.name])
-    return map
-  }, [folders])
-
-  const toggleSelect = (id: string) =>
-    setSelected((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+  }, [questions, dateFilter, todayKey, now, pickedDate, currentTopic, visibility, sort])
 
   const flash = (message: string) => {
     setNotice(message)
-    window.setTimeout(() => setNotice((m) => (m === message ? null : m)), 2500)
+    window.setTimeout(() => setNotice((current) => (current === message ? null : current)), 2500)
   }
 
-  const createFolder = async (name: string): Promise<QuestionFolder | null> => {
+  const createTopic = async () => {
+    if (!selectedClassId || creatingTopic) return
+    const name = newTopicName.trim()
+    if (!name) return setError('질문 주제 이름을 입력해 주세요.')
+    if (name.length > 40) return setError('질문 주제 이름은 40자까지 입력할 수 있어요.')
+
+    setCreatingTopic(true)
     setError(null)
-    const { data, error: err } = await supabase
-      .from('question_folders')
-      .insert({ class_id: selectedClassId, name })
-      .select('id, class_id, name, created_at')
-      .single()
-    if (err) {
-      setError(folderError(err))
-      return null
-    }
-    const folder = { ...(data as Omit<QuestionFolder, 'question_ids'>), question_ids: [] }
-    setFolders((list) => [...list, folder])
-    return folder
+    const { error: err } = await supabase
+      .from('question_topics')
+      .insert({ class_id: selectedClassId, name, status: 'hidden' })
+    setCreatingTopic(false)
+
+    if (err) return setError(topicError(err))
+    setNewTopicName('')
+    flash(`「${name}」 질문 주제를 만들었어요. 처음에는 숨김 상태예요.`)
+    await loadTopics()
   }
 
-  // 질문을 폴더에 넣기: 연결만 추가 (질문은 그대로, 이미 든 질문은 건너뜀)
-  const putInFolder = async (folder: QuestionFolder) => {
+  const renameTopic = async (topic: QuestionTopic) => {
+    const next = window.prompt('질문 주제 이름을 바꿔 주세요. (1~40자)', topic.name)?.trim()
+    if (!next || next === topic.name) return
+    if (next.length > 40) return setError('질문 주제 이름은 40자까지 입력할 수 있어요.')
+
+    setTopicBusy(topic.id)
     setError(null)
-    const already = new Set(folder.question_ids)
-    const ids = selectedShown.map((q) => q.id).filter((id) => !already.has(id))
-    if (ids.length) {
-      const { error: err } = await supabase.from('question_folder_items').insert(ids.map((question_id) => ({ folder_id: folder.id, question_id })))
-      if (err && !toMessage(err).includes('duplicate key')) {
-        setError(folderError(err))
-        await loadFolders()
-        return
-      }
-    }
-    await loadFolders()
-    setSelected(new Set())
-    flash(`「${folder.name}」 폴더에 ${ids.length}개 넣었어요${ids.length < selectedShown.length ? ` (이미 든 ${selectedShown.length - ids.length}개 제외)` : ''}.`)
+    const { error: err } = await supabase.from('question_topics').update({ name: next }).eq('id', topic.id)
+    setTopicBusy(null)
+    if (err) return setError(topicError(err))
+    flash('질문 주제 이름을 바꿨어요.')
+    await loadTopics()
   }
 
-  const createAndPut = async (name: string) => {
-    const folder = await createFolder(name)
-    if (!folder) return false
-    await putInFolder(folder)
-    return true
-  }
-
-  // 폴더에서 빼기: 연결만 지움 (질문 원본은 그대로)
-  const takeOutOfFolder = async () => {
-    if (!currentFolder) return
+  const changeTopicStatus = async (topic: QuestionTopic, status: QuestionTopicStatus) => {
+    if (topic.status === status || topicBusy) return
+    setTopicBusy(topic.id)
     setError(null)
-    const ids = selectedShown.map((q) => q.id)
-    const { error: err } = await supabase.from('question_folder_items').delete().eq('folder_id', currentFolder.id).in('question_id', ids)
-    if (err) setError(folderError(err))
-    else {
-      setSelected(new Set())
-      flash(`「${currentFolder.name}」 폴더에서 ${ids.length}개 뺐어요. 질문은 그대로 남아 있어요.`)
-    }
-    await loadFolders()
+    const { error: err } = await supabase.from('question_topics').update({ status }).eq('id', topic.id)
+    setTopicBusy(null)
+    if (err) return setError(topicError(err))
+    flash(`「${topic.name}」을(를) ${STATUS_META[status].label} 상태로 바꿨어요.`)
+    await loadTopics()
   }
 
-  const renameFolder = async (folder: QuestionFolder) => {
-    const next = window.prompt('폴더 이름을 바꿔 주세요. (1~30자)', folder.name)?.trim()
-    if (!next || next === folder.name) return
-    setError(null)
-    const { error: err } = await supabase.from('question_folders').update({ name: next.slice(0, 30) }).eq('id', folder.id)
-    if (err) setError(folderError(err))
-    await loadFolders()
-  }
-
-  const deleteFolder = async (folder: QuestionFolder) => {
+  const deleteTopic = async (topic: QuestionTopic) => {
+    if (topicBusy) return
+    const count = topicCounts.get(topic.id) ?? 0
     const ok = window.confirm(
-      `「${folder.name}」 폴더를 지울까요?\n\n폴더만 지워지고, 안에 있던 질문 ${folder.question_ids.length}개는 지워지지 않고 그대로 남아요.`,
+      `「${topic.name}」 질문 주제를 삭제할까요?\n\n이 주제의 질문과 모든 관련 기록이 함께 삭제됩니다.\n현재 질문 ${count}개와 질문 성장 이력, 투표, 생각 나눔, 선생님 피드백도 함께 삭제되며 복구할 수 없습니다.`,
     )
     if (!ok) return
+
+    const confirmAgain = window.confirm('정말로 주제와 기록을 모두 삭제할까요? 이 작업은 되돌릴 수 없습니다.')
+    if (!confirmAgain) return
+
+    setTopicBusy(topic.id)
     setError(null)
-    const { error: err } = await supabase.from('question_folders').delete().eq('id', folder.id)
-    if (err) setError(folderError(err))
-    else {
-      setFolderFilter(null)
-      flash(`「${folder.name}」 폴더를 지웠어요. 질문은 그대로예요.`)
-    }
-    await loadFolders()
+    const { data, error: err } = await supabase.rpc('delete_question_topic', { p_topic_id: topic.id })
+    setTopicBusy(null)
+    if (err) return setError(topicError(err))
+
+    if (topicFilter === topic.id) setTopicFilter(null)
+    flash(`「${topic.name}」 주제와 질문 기록 ${Number(data ?? 0)}개를 삭제했어요.`)
+    await Promise.all([load(), reloadStats()])
   }
 
-  const update = async (id: string, patch: Pick<TeacherQuestion, 'is_hidden'>) => {
+  const updateQuestion = async (id: string, patch: Pick<TeacherQuestion, 'is_hidden'>) => {
     setQuestions((list) => list.map((q) => (q.id === id ? { ...q, ...patch } : q)))
     const { error: err } = await supabase.from('questions').update(patch).eq('id', id)
     if (err) setError(toMessage(err))
     await load()
   }
 
-  // 삭제: 질문과 그 질문에 받은 표가 함께 지워집니다 (votes 는 on delete cascade).
-  // 학생 화면에서만 감추려면 숨기기를 씁니다.
-  const remove = async (q: TeacherQuestion) => {
+  const removeQuestion = async (q: TeacherQuestion) => {
     const preview = q.content.length > 40 ? `${q.content.slice(0, 40)}…` : q.content
     const ok = window.confirm(
-      `이 질문을 삭제할까요?\n\n「${preview}」\n\n삭제하면 되돌릴 수 없고, 이 질문에 받은 투표 ${q.vote_count}표도 함께 지워져요.\n학생 화면에서만 감추려면 '숨기기'를 눌러 주세요.`,
+      `이 질문을 삭제할까요?\n\n「${preview}」\n\n삭제하면 되돌릴 수 없고, 이 질문에 받은 투표 ${q.vote_count}표도 함께 지워져요.`,
     )
     if (!ok) return
+
     setError(null)
-    setQuestions((list) => list.filter((x) => x.id !== q.id))
     const { data, error: err } = await supabase.from('questions').delete().eq('id', q.id).select('id')
     if (err) setError(toMessage(err))
     else if (!data?.length) setError('질문을 삭제하지 못했어요. 새로고침 후 다시 시도해 주세요.')
@@ -280,13 +283,103 @@ export default function QuestionsPage() {
         <NoClassYet />
       ) : (
         <div className="@container flex flex-col gap-5">
+          <section className="rounded-3xl border-2 border-line bg-paper p-4 shadow-pop sm:p-5">
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="font-display text-2xl sm:text-3xl">질문 주제 관리</h2>
+                <p className="mt-1 text-base text-ink-soft">질문을 나중에 폴더로 옮기지 않고, 먼저 주제를 만든 뒤 상태를 관리합니다.</p>
+              </div>
+              <div className="flex w-full gap-2 sm:w-auto">
+                <Input
+                  value={newTopicName}
+                  onChange={(e) => setNewTopicName(e.target.value.slice(0, 40))}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') createTopic()
+                  }}
+                  placeholder="새 질문 주제"
+                  aria-label="새 질문 주제"
+                  className="min-w-0 sm:w-64"
+                />
+                <Button variant="sky" onClick={createTopic} loading={creatingTopic} disabled={!newTopicName.trim()}>
+                  {!creatingTopic && <Plus className="size-5" aria-hidden />}
+                  주제 만들기
+                </Button>
+              </div>
+            </div>
+
+            <div className="mb-4 grid gap-2 text-sm text-ink-soft sm:grid-cols-3">
+              <p className="rounded-2xl bg-mint-soft px-3 py-2"><strong className="text-mint-ink">진행 중</strong> · 현재 학생 활동용</p>
+              <p className="rounded-2xl bg-sky-soft px-3 py-2"><strong className="text-sky-ink">보관</strong> · 작성 종료, 기록 유지</p>
+              <p className="rounded-2xl bg-cream px-3 py-2"><strong className="text-ink">숨김</strong> · 학생에게 완전히 숨김</p>
+            </div>
+
+            {topics.length === 0 ? (
+              <p className="rounded-2xl bg-cream px-4 py-4 text-ink-soft">아직 질문 주제가 없어요. 새 주제를 만들어 주세요.</p>
+            ) : (
+              <ul className="grid gap-3 lg:grid-cols-2">
+                {topics.map((topic) => {
+                  const busy = topicBusy === topic.id
+                  const meta = STATUS_META[topic.status]
+                  return (
+                    <li key={topic.id} className="rounded-2xl border-2 border-line bg-cream/40 p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="text-xl font-bold break-words">{topic.name}</h3>
+                            <Badge className={meta.className}>{meta.label}</Badge>
+                          </div>
+                          <p className="mt-1 text-sm text-ink-soft">{meta.description} · 현재 질문 {topicCounts.get(topic.id) ?? 0}개</p>
+                        </div>
+                        <Button variant="ghost" size="sm" onClick={() => renameTopic(topic)} disabled={busy}>
+                          <Pencil className="size-4" aria-hidden />이름 수정
+                        </Button>
+                      </div>
+
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <Button size="sm" variant={topic.status === 'active' ? 'mint' : 'secondary'} onClick={() => changeTopicStatus(topic, 'active')} disabled={busy || topic.status === 'active'}>
+                          <PlayCircle className="size-4" aria-hidden />진행 중
+                        </Button>
+                        <Button size="sm" variant={topic.status === 'archived' ? 'sky' : 'secondary'} onClick={() => changeTopicStatus(topic, 'archived')} disabled={busy || topic.status === 'archived'}>
+                          <Archive className="size-4" aria-hidden />보관
+                        </Button>
+                        <Button size="sm" variant="secondary" onClick={() => changeTopicStatus(topic, 'hidden')} disabled={busy || topic.status === 'hidden'}>
+                          <EyeOff className="size-4" aria-hidden />숨김
+                        </Button>
+                        <Button size="sm" variant="danger" onClick={() => deleteTopic(topic)} disabled={busy} className="sm:ml-auto">
+                          <Trash2 className="size-4" aria-hidden />주제와 기록 모두 삭제
+                        </Button>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </section>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="mr-1 text-base font-bold text-ink-soft">질문 주제</span>
+            <Button size="sm" variant={topicFilter === null ? 'sky' : 'secondary'} onClick={() => setTopicFilter(null)}>
+              전체 {questions.length}
+            </Button>
+            {topics.map((topic) => (
+              <Button
+                key={topic.id}
+                size="sm"
+                variant={topicFilter === topic.id ? 'sky' : 'secondary'}
+                onClick={() => setTopicFilter(topic.id)}
+              >
+                {topic.name} {topicCounts.get(topic.id) ?? 0}
+              </Button>
+            ))}
+          </div>
+
           <div className="flex flex-wrap items-center gap-3">
             <ChoiceChips<Visibility>
               size="sm"
               options={[
                 { value: 'all', label: '모두' },
                 { value: 'visible', label: '공개' },
-                { value: 'hidden', label: '숨김' },
+                { value: 'hidden', label: '숨김 질문' },
               ]}
               value={visibility}
               onChange={setVisibility}
@@ -328,61 +421,22 @@ export default function QuestionsPage() {
             )}
           </div>
 
-          {folderLoadError ? (
-            <ErrorBox message={folderLoadError} />
-          ) : (
-            <FolderBar
-              folders={folders}
-              total={questions.length}
-              unfoldered={unfolderedCount}
-              value={currentFolder?.id ?? (noFolderFilter ? NO_FOLDER_FILTER : null)}
-              onChange={(id) => setFolderFilter(id)}
-              onCreate={async (name) => Boolean(await createFolder(name))}
-              onRename={renameFolder}
-              onDelete={deleteFolder}
-            />
-          )}
-
-          {!folderLoadError && (
-            <SelectionBar
-              selectedCount={selectedShown.length}
-              shownCount={shown.length}
-              folders={folders}
-              currentFolder={currentFolder}
-              onSelectAll={() => setSelected(new Set(shown.map((q) => q.id)))}
-              onClear={() => setSelected(new Set())}
-              onPut={putInFolder}
-              onCreateAndPut={createAndPut}
-              onTakeOut={takeOutOfFolder}
-            />
-          )}
-
           <ErrorBox message={error} />
-          {notice && (
-            <p className="rounded-2xl bg-mint-soft px-4 py-3 text-lg font-bold text-mint-ink" role="status">
-              {notice}
-            </p>
-          )}
+          {notice && <p className="rounded-2xl bg-mint-soft px-4 py-3 text-lg font-bold text-mint-ink" role="status">{notice}</p>}
 
           {loading ? (
             <Spinner />
           ) : shown.length === 0 ? (
-            <EmptyState
-              icon={<Inbox className="size-14" />}
-              title={questions.length === 0 ? '질문이 없어요' : '조건에 맞는 질문이 없어요'}
-            />
+            <EmptyState icon={<Inbox className="size-14" />} title={questions.length === 0 ? '질문이 없어요' : '조건에 맞는 질문이 없어요'} />
           ) : (
-            // 목록이 차지하는 폭에 따라 1~3열 (왼쪽 메뉴가 있어 화면 폭 대신 목록 폭 기준). 글자 크기는 그대로
             <ul className="grid gap-4 @min-[34rem]:grid-cols-2 @min-[54rem]:grid-cols-3">
               {shown.map((q) => (
                 <QuestionItem
                   key={q.id}
                   q={q}
-                  folderNames={folderNamesOf.get(q.id) ?? []}
-                  selected={selected.has(q.id)}
-                  onToggleSelect={toggleSelect}
-                  onUpdate={update}
-                  onDelete={remove}
+                  topicName={q.topic_id ? topicNames.get(q.topic_id) ?? '알 수 없는 주제' : '주제 없음'}
+                  onUpdate={updateQuestion}
+                  onDelete={removeQuestion}
                 />
               ))}
             </ul>
@@ -395,75 +449,42 @@ export default function QuestionsPage() {
 
 function QuestionItem({
   q,
-  folderNames,
-  selected,
-  onToggleSelect,
+  topicName,
   onUpdate,
   onDelete,
 }: {
   q: TeacherQuestion
-  folderNames: string[]
-  selected: boolean
-  onToggleSelect: (id: string) => void
+  topicName: string
   onUpdate: (id: string, patch: Pick<TeacherQuestion, 'is_hidden'>) => Promise<void>
   onDelete: (q: TeacherQuestion) => Promise<void>
 }) {
   return (
-    <li
-      className={cx(
-        'flex min-w-0 flex-col gap-3 rounded-3xl border-2 p-5 shadow-pop',
-        q.is_hidden ? 'border-dashed border-line-strong bg-cream opacity-80' : 'border-line bg-paper',
-        selected && 'ring-4 ring-sky',
-      )}
-    >
+    <li className={cx('flex min-w-0 flex-col gap-3 rounded-3xl border-2 p-5 shadow-pop', q.is_hidden ? 'border-dashed border-line-strong bg-cream opacity-80' : 'border-line bg-paper')}>
       <div className="flex flex-wrap items-center gap-2">
-        <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl py-1 pr-2 text-base font-bold text-ink-soft">
-          <input
-            type="checkbox"
-            checked={selected}
-            onChange={() => onToggleSelect(q.id)}
-            className="size-5 shrink-0 accent-[#7fb6ec]"
-            aria-label={`질문 선택: ${q.content.slice(0, 30)}`}
-          />
-          선택
-        </label>
-        {q.is_hidden && <Badge className="bg-line text-ink-soft">숨김</Badge>}
-        {folderNames.map((name) => (
-          <Badge key={name} className="inline-flex items-center gap-1 bg-lilac-soft text-lilac-ink">
-            <Folder className="size-3.5" aria-hidden />
-            {name}
-          </Badge>
-        ))}
+        <Badge className="bg-lilac-soft text-lilac-ink">{topicName}</Badge>
+        {q.is_hidden && <Badge className="bg-line text-ink-soft">질문 숨김</Badge>}
       </div>
 
       <p className={cx('text-xl leading-relaxed font-medium break-words whitespace-pre-wrap', q.is_hidden && 'line-through decoration-ink-soft/40')}>
         {q.content}
       </p>
 
-      {/* 같은 줄의 카드 높이가 맞춰지므로 작성자·버튼은 카드 아래쪽에 모음 */}
       <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-1 text-base text-ink-soft">
         <span className="inline-flex items-center gap-1 font-bold text-ink">
           <UserRound className="size-5" aria-hidden />
           {q.student ? `${q.student.student_number}번 ${q.student.name}` : '알 수 없음'}
         </span>
-        <span className="inline-flex items-center gap-1">
-          <Clock className="size-5" aria-hidden />
-          {formatDateTime(q.created_at)}
-        </span>
-        <span className="inline-flex items-center gap-1 font-bold text-pink-ink">
-          <Heart className="size-5 fill-current" aria-hidden />
-          {q.vote_count}표
-        </span>
+        <span className="inline-flex items-center gap-1"><Clock className="size-5" aria-hidden />{formatDateTime(q.created_at)}</span>
+        <span className="inline-flex items-center gap-1 font-bold text-pink-ink"><Heart className="size-5 fill-current" aria-hidden />{q.vote_count}표</span>
       </div>
 
       <div className="mt-1 flex flex-wrap gap-2">
         <Button size="sm" variant={q.is_hidden ? 'mint' : 'secondary'} onClick={() => onUpdate(q.id, { is_hidden: !q.is_hidden })}>
           {q.is_hidden ? <Eye className="size-4" aria-hidden /> : <EyeOff className="size-4" aria-hidden />}
-          {q.is_hidden ? '다시 공개' : '숨기기'}
+          {q.is_hidden ? '다시 공개' : '질문 숨기기'}
         </Button>
         <Button size="sm" variant="danger" onClick={() => onDelete(q)} className="sm:ml-auto">
-          <Trash2 className="size-4" aria-hidden />
-          삭제
+          <Trash2 className="size-4" aria-hidden />삭제
         </Button>
       </div>
     </li>
