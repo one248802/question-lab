@@ -48,6 +48,7 @@ export default function StudentThoughtTopic() {
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
+    if (!topic || topic.max_items_per_student === 0 || topic.my_item_count >= topic.max_items_per_student) return
     const content = draft.trim()
     if (!content) return setError('내 생각을 적어 주세요.')
     if (content.length > 120) return setError('생각은 120자까지 쓸 수 있어요.')
@@ -90,6 +91,7 @@ export default function StudentThoughtTopic() {
   if (!topic) return <main className="mx-auto max-w-3xl px-4 py-8"><ErrorBox message={error} /></main>
 
   const remaining = Math.max(0, topic.max_votes - topic.my_vote_count)
+  const canAddThought = topic.is_open && topic.max_items_per_student > 0 && topic.my_item_count < topic.max_items_per_student
 
   return (
     <div className="min-h-dvh">
@@ -107,6 +109,7 @@ export default function StudentThoughtTopic() {
           <div className="mb-2 flex flex-wrap gap-2">
             {topic.is_open && <Badge className="bg-mint-soft text-mint-ink">참여 중</Badge>}
             {topic.results_visible && <Badge className="bg-butter-soft text-butter-ink">결과 공개</Badge>}
+            <Badge className="bg-lilac-soft text-lilac-ink">생각 {topic.max_items_per_student}개까지</Badge>
           </div>
           <h1 className="flex items-start gap-2 font-display text-3xl sm:text-4xl">
             <Lightbulb className="mt-1 size-9 shrink-0 text-mint-ink" aria-hidden />{topic.title}
@@ -116,15 +119,23 @@ export default function StudentThoughtTopic() {
         <ErrorBox message={error} />
         {notice && <p role="status" className="rounded-2xl bg-mint-soft px-4 py-3 font-bold text-mint-ink">{notice}</p>}
 
-        {topic.is_open && (
+        {topic.is_open && topic.max_items_per_student === 0 && (
+          <p className="rounded-2xl border-2 border-mint bg-mint-soft/50 px-4 py-3 text-lg font-bold text-mint-ink">선생님이 후보를 올리는 활동이에요. 친구 발표를 듣고 후보에 투표해 보세요.</p>
+        )}
+
+        {canAddThought && (
           <form onSubmit={submit} className="flex flex-col gap-2 rounded-3xl border-2 border-line bg-paper p-4 shadow-pop sm:flex-row sm:items-end">
             <div className="min-w-0 flex-1">
-              <label htmlFor="thought-item" className="mb-2 block text-lg font-bold">내 생각 적기</label>
+              <label htmlFor="thought-item" className="mb-2 block text-lg font-bold">내 생각 적기 <span className="text-sm font-normal text-ink-soft">({topic.my_item_count}/{topic.max_items_per_student})</span></label>
               <Input id="thought-item" value={draft} onChange={(e) => setDraft(e.target.value.slice(0, 120))} maxLength={120} placeholder="의견이나 아이디어를 적어 보세요." />
               <p className="mt-1 text-right text-xs text-ink-soft">{draft.length}/120</p>
             </div>
             <Button type="submit" variant="mint" loading={busy}>올리기</Button>
           </form>
+        )}
+
+        {topic.is_open && topic.max_items_per_student > 0 && topic.my_item_count >= topic.max_items_per_student && (
+          <p className="rounded-2xl bg-paper px-4 py-3 text-ink-soft">내 생각을 {topic.max_items_per_student}개 모두 올렸어요. 내 생각을 하나 삭제하면 새 생각을 다시 올릴 수 있어요.</p>
         )}
 
         {topic.results_visible && ranked.length > 0 && (
@@ -156,7 +167,10 @@ export default function StudentThoughtTopic() {
           <ul className="grid gap-3 sm:grid-cols-2">
             {topic.items.map((item) => (
               <li key={item.id} className="flex min-w-0 flex-col gap-3 rounded-3xl border-2 border-line bg-paper p-4 shadow-pop-sm">
-                {item.is_mine && <Badge className="self-start bg-sky-soft text-sky-ink">내 생각</Badge>}
+                <div className="flex flex-wrap gap-2">
+                  {item.is_mine && <Badge className="bg-sky-soft text-sky-ink">내 생각</Badge>}
+                  {item.is_teacher_candidate && <Badge className="bg-mint-soft text-mint-ink">선생님 후보</Badge>}
+                </div>
                 <p className="text-xl leading-relaxed break-words">{item.content}</p>
                 <div className="mt-auto flex items-center justify-between gap-2">
                   {item.is_mine ? (
