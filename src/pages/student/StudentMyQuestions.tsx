@@ -11,6 +11,7 @@ import {
   Square,
   Star,
   ThumbsUp,
+  Trash2,
 } from 'lucide-react'
 import { ConnectionRetry } from '../../components/ConnectionRetry'
 import { Badge, Button, ChoiceChips, EmptyState, ErrorBox, Input, Spinner, Textarea, cx } from '../../components/ui'
@@ -52,6 +53,7 @@ export default function StudentMyQuestions() {
   const [upgradingId, setUpgradingId] = useState<string | null>(null)
   const [upgradeText, setUpgradeText] = useState('')
   const [upgradeBusy, setUpgradeBusy] = useState(false)
+  const [deleteBusyId, setDeleteBusyId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     const [ctx, list] = await fetchMyQuestions()
@@ -185,6 +187,29 @@ export default function StudentMyQuestions() {
     await load()
   }
 
+  const removeQuestion = async (q: MyQuestionHistory) => {
+    if (!q.is_current || deleteBusyId) return
+    const preview = q.content.length > 60 ? `${q.content.slice(0, 60)}…` : q.content
+    const historyWarning = q.parent_question_id
+      ? '업그레이드 전 질문까지 이 질문의 성장 이력 전체가 함께 삭제돼요.\n'
+      : ''
+    const ok = window.confirm(
+      `이 질문을 삭제할까요?\n\n「${preview}」\n\n${historyWarning}받은 투표와 선생님 피드백도 함께 삭제되고 되돌릴 수 없어요.`,
+    )
+    if (!ok) return
+
+    setDeleteBusyId(q.id)
+    setError(null)
+    const { data, error: err } = await supabase.rpc('delete_my_question', { p_question_id: q.id })
+    setDeleteBusyId(null)
+    if (err) return setError(toMessage(err))
+
+    if (upgradingId === q.id) cancelUpgrade()
+    const deleted = Number(data ?? 0)
+    setNotice(deleted > 1 ? `질문과 성장 이력 ${deleted}개를 삭제했어요.` : '질문을 삭제했어요.')
+    await load()
+  }
+
   if (loading) return <Spinner />
   if (!me) {
     return (
@@ -285,6 +310,7 @@ export default function StudentMyQuestions() {
             {filtered.map((q) => {
               const active = selected.has(q.id)
               const upgrading = upgradingId === q.id
+              const deleting = deleteBusyId === q.id
               return (
                 <li
                   key={q.id}
@@ -339,10 +365,16 @@ export default function StudentMyQuestions() {
                   )}
 
                   {q.is_current && !upgrading && (
-                    <Button variant="secondary" size="sm" onClick={() => startUpgrade(q)} className="mt-auto self-start">
-                      <Sparkles className="size-5" aria-hidden />
-                      질문 업그레이드
-                    </Button>
+                    <div className="mt-auto flex flex-wrap gap-2">
+                      <Button variant="secondary" size="sm" onClick={() => startUpgrade(q)} disabled={Boolean(deleteBusyId)}>
+                        <Sparkles className="size-5" aria-hidden />
+                        질문 업그레이드
+                      </Button>
+                      <Button variant="danger" size="sm" onClick={() => removeQuestion(q)} loading={deleting} disabled={Boolean(deleteBusyId && !deleting)}>
+                        {!deleting && <Trash2 className="size-4" aria-hidden />}
+                        질문 삭제
+                      </Button>
+                    </div>
                   )}
 
                   {q.is_current && upgrading && (
