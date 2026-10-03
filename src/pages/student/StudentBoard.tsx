@@ -158,7 +158,7 @@ export default function StudentBoard() {
   return (
     <div className="min-h-dvh">
       <header className="sticky top-0 z-10 border-b-2 border-line bg-cream/90 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3">
+        <div className="mx-auto flex max-w-[90rem] items-center justify-between gap-3 px-4 py-3">
           <div className="min-w-0">
             <p className="truncate font-display text-2xl sm:text-3xl">우리반 질문 상자</p>
             <p className="truncate text-base text-ink-soft">{me.class_name}</p>
@@ -176,13 +176,13 @@ export default function StudentBoard() {
         </div>
       </header>
 
-      <main className="mx-auto grid max-w-6xl gap-6 px-4 py-6 lg:grid-cols-[22rem_1fr] lg:items-start">
+      <main className="mx-auto grid max-w-[90rem] gap-6 px-4 py-6 lg:grid-cols-[22rem_1fr] lg:items-start">
         <div className="flex flex-col gap-6 lg:sticky lg:top-24">
           <QuestionComposer onSubmit={submitQuestion} />
           <OpenActivities />
         </div>
 
-        <section className="flex flex-col gap-4">
+        <section className="@container flex min-w-0 flex-col gap-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="font-display text-3xl">
               우리 반 질문 <span className="text-ink-soft">{questions.length}</span>
@@ -213,11 +213,12 @@ export default function StudentBoard() {
           {sorted.length === 0 ? (
             <EmptyState icon={<Inbox className="size-14" />} title="아직 질문이 없어요" />
           ) : (
-            <ul className="grid gap-4 sm:grid-cols-2">
+            // 질문 목록이 차지하는 폭에 따라 1~3열. 글자 크기는 그대로, 카드 높이는 내용만큼
+            <ul className="grid gap-4 @min-[34rem]:grid-cols-2 @min-[54rem]:grid-cols-3">
               {sorted.map((q) => {
                 const blocked = voteBlockedReason(q)
                 return (
-                <li key={q.id} className="flex flex-col gap-4 rounded-3xl border-2 border-line bg-paper p-5 shadow-pop">
+                <li key={q.id} className="flex min-w-0 flex-col gap-4 rounded-3xl border-2 border-line bg-paper p-5 shadow-pop">
                   {q.is_mine && (
                     <span className="self-start rounded-full bg-butter-soft px-2 py-1 text-sm font-bold text-butter-ink">내 질문</span>
                   )}

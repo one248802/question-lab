@@ -114,7 +114,7 @@ export default function QuestionsPage() {
       {classes.length === 0 ? (
         <NoClassYet />
       ) : (
-        <div className="flex flex-col gap-5">
+        <div className="@container flex flex-col gap-5">
           <div className="flex flex-wrap items-center gap-3">
             <ChoiceChips<Visibility>
               size="sm"
@@ -145,7 +145,8 @@ export default function QuestionsPage() {
           ) : shown.length === 0 ? (
             <EmptyState icon={<Inbox className="size-14" />} title="질문이 없어요" />
           ) : (
-            <ul className="grid gap-4 lg:grid-cols-2">
+            // 목록이 차지하는 폭에 따라 1~3열 (왼쪽 메뉴가 있어 화면 폭 대신 목록 폭 기준). 글자 크기는 그대로
+            <ul className="grid gap-4 @min-[34rem]:grid-cols-2 @min-[54rem]:grid-cols-3">
               {shown.map((q) => (
                 <QuestionItem key={q.id} q={q} onUpdate={update} onDelete={remove} />
               ))}
@@ -169,7 +170,7 @@ function QuestionItem({
   return (
     <li
       className={cx(
-        'flex flex-col gap-3 rounded-3xl border-2 p-5 shadow-pop',
+        'flex min-w-0 flex-col gap-3 rounded-3xl border-2 p-5 shadow-pop',
         q.is_hidden ? 'border-dashed border-line-strong bg-cream opacity-80' : 'border-line bg-paper',
       )}
     >
@@ -179,7 +180,8 @@ function QuestionItem({
         {q.content}
       </p>
 
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-base text-ink-soft">
+      {/* 같은 줄의 카드 높이가 맞춰지므로 작성자·버튼은 카드 아래쪽에 모음 */}
+      <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-1 text-base text-ink-soft">
         <span className="inline-flex items-center gap-1 font-bold text-ink">
           <UserRound className="size-5" aria-hidden />
           {q.student ? `${q.student.student_number}번 ${q.student.name}` : '알 수 없음'}
