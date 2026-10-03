@@ -16,7 +16,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core'
-import { ArrowLeft, ImageDown, Inbox, LayoutGrid, RefreshCw, RotateCcw, Save } from 'lucide-react'
+import { ArrowLeft, ImageDown, Inbox, LayoutGrid, RotateCcw, Save } from 'lucide-react'
 import { ConnectionRetry } from '../../components/ConnectionRetry'
 import { Button, ErrorBox, EmptyState, Input, Spinner, cx } from '../../components/ui'
 import { useAuth } from '../../contexts/AuthContext'
@@ -268,7 +268,6 @@ export default function StudentActivity() {
               <div className="flex flex-wrap gap-2">
                 {activity.questions.length > 0 && <Button variant="mint" size="sm" onClick={savePng} loading={saving}>{!saving && <ImageDown className="size-5" aria-hidden />}분류 결과 PNG로 저장</Button>}
                 <Button variant="secondary" size="sm" onClick={resetAll}><RotateCcw className="size-5" aria-hidden />처음으로</Button>
-                <Button variant="secondary" size="sm" onClick={refresh} aria-label="새로고침"><RefreshCw className={cx('size-5', refreshing && 'animate-spin')} aria-hidden /></Button>
               </div>
             </div>
 
@@ -291,7 +290,7 @@ export default function StudentActivity() {
             )}
 
             <p className="rounded-2xl bg-paper px-4 py-3 text-lg">{selectedId ? '옮길 영역의 「여기에 놓기」를 누르세요.' : '질문 카드를 끌어서 영역에 놓거나, 카드를 누른 다음 옮길 영역을 고르세요.'}</p>
-            {connectionError && <ErrorBox message="연결이 잠시 불안정해요. 새로고침 버튼으로 다시 시도해 주세요. 지금 배치는 그대로예요." />}
+            {connectionError && <ErrorBox message="연결이 잠시 불안정해요. 페이지를 나갔다 다시 들어오면 최신 내용을 불러올 수 있어요. 지금 배치는 그대로예요." />}
             <ErrorBox message={error} />
             {notice && <p role="status" className="rounded-2xl border-2 border-[#6fc9a4] bg-mint-soft px-4 py-3 text-lg font-bold text-mint-ink">{notice}</p>}
 
