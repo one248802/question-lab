@@ -47,7 +47,6 @@ export default function StudentJoin() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // 이 기기로 이미 입장한 학생이 있는지 확인. 일시적인 오류는 '입장 안 함'으로 보지 않고 다시 시도하게 함
   useEffect(() => {
     if (authLoading) return
     let alive = true
@@ -76,7 +75,6 @@ export default function StudentJoin() {
 
   const toggleRemember = (next: boolean) => {
     setRememberCode(next)
-    // 체크를 풀면 저장된 클래스 코드를 바로 지움 (체크하면 입장에 성공했을 때 저장)
     if (!next) writeRememberedCode(null)
   }
 
@@ -90,7 +88,6 @@ export default function StudentJoin() {
 
     setSubmitting(true)
     try {
-      // 교사 계정으로 로그인되어 있으면 먼저 로그아웃
       if (user && !isAnonymous) await supabase.auth.signOut()
       const { data: current } = await supabase.auth.getSession()
       if (!current.session || !current.session.user.is_anonymous) {
@@ -104,7 +101,7 @@ export default function StudentJoin() {
       })
       if (joinError) throw joinError
       writeRememberedCode(rememberCode ? code : null)
-      navigate('/student/board', { replace: true })
+      navigate('/student/home', { replace: true })
     } catch (err) {
       setError(toMessage(err))
     } finally {
@@ -138,7 +135,7 @@ export default function StudentJoin() {
           <p className="font-display text-3xl">
             {existing.student_number}번 {existing.student_name}
           </p>
-          <Button size="lg" block onClick={() => navigate('/student/board')}>
+          <Button size="lg" block onClick={() => navigate('/student/home')}>
             계속하기
           </Button>
           <Button variant="secondary" block onClick={() => setShowForm(true)}>

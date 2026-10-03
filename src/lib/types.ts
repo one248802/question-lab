@@ -1,5 +1,6 @@
 /** 투표 상태: 시작 전 → 투표 중 → 종료 (종료 후 다시 열 수 있음) */
 export type VotingStatus = 'before' | 'open' | 'closed'
+export type ThoughtAuthorMode = 'anonymous' | 'named'
 
 export interface Profile {
   id: string
@@ -25,6 +26,10 @@ export interface ClassRoom {
   teacher_like_enabled: boolean
   /** 학생 질문에 교사 코멘트 기능 사용 */
   teacher_comment_enabled: boolean
+  /** 질문에 대한 학생 생각 나누기 사용 */
+  thought_sharing_enabled: boolean
+  /** 학생끼리 생각 작성자를 익명/실명으로 표시 */
+  thought_author_mode: ThoughtAuthorMode
   created_at: string
 }
 
@@ -77,6 +82,16 @@ export interface BoardQuestion {
   voted_by_me: boolean
   /** 투표 결과 비공개면 null */
   vote_count: number | null
+  thought_count: number
+}
+
+export interface QuestionThought {
+  id: string
+  content: string
+  created_at: string
+  updated_at: string
+  is_mine: boolean
+  author_label: string
 }
 
 /** 학생의 내 질문 성장 이력 */
@@ -113,6 +128,8 @@ export interface StudentContext {
   my_vote_count: number
   teacher_like_enabled: boolean
   teacher_comment_enabled: boolean
+  thought_sharing_enabled: boolean
+  thought_author_mode: ThoughtAuthorMode
 }
 
 /** 질문 분류 활동 (교사 화면) */
@@ -122,6 +139,7 @@ export interface ClassificationActivity {
   title: string
   area_names: string[]
   is_open: boolean
+  student_can_edit_area_names: boolean
   created_at: string
   classification_activity_questions: Array<{ question_id: string; sort_order: number }>
 }
@@ -140,5 +158,36 @@ export interface ActivityForStudent {
   id: string
   title: string
   area_names: string[]
+  teacher_area_names: string[]
+  student_can_edit_area_names: boolean
   questions: Array<{ id: string; content: string }>
+}
+
+export interface ThoughtTopicSummary {
+  id: string
+  title: string
+  is_open: boolean
+  results_visible: boolean
+  max_votes: number
+  item_count: number
+  created_at: string
+}
+
+export interface ThoughtItem {
+  id: string
+  content: string
+  is_mine: boolean
+  voted_by_me: boolean
+  vote_count: number | null
+  created_at: string
+}
+
+export interface ThoughtTopicDetail {
+  id: string
+  title: string
+  is_open: boolean
+  results_visible: boolean
+  max_votes: number
+  my_vote_count: number
+  items: ThoughtItem[]
 }

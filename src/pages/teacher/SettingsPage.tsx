@@ -5,7 +5,7 @@ import { Button, Card, ChoiceChips, ErrorBox, Input, Label, PageTitle, Spinner, 
 import { useTeacher } from '../../contexts/TeacherContext'
 import { toMessage } from '../../lib/errors'
 import { supabase } from '../../lib/supabase'
-import type { ClassRoom, VotingStatus } from '../../lib/types'
+import type { ClassRoom, ThoughtAuthorMode, VotingStatus } from '../../lib/types'
 
 type VoteSettingsPatch = Partial<
   Pick<
@@ -20,12 +20,12 @@ type VoteSettingsPatch = Partial<
 >
 
 type FeedbackSettingsPatch = Partial<Pick<ClassRoom, 'teacher_like_enabled' | 'teacher_comment_enabled'>>
-type ClassSettingsPatch = VoteSettingsPatch & FeedbackSettingsPatch
+type ThoughtSettingsPatch = Partial<Pick<ClassRoom, 'thought_sharing_enabled' | 'thought_author_mode'>>
+type ClassSettingsPatch = VoteSettingsPatch & FeedbackSettingsPatch & ThoughtSettingsPatch
 
 const MAX_VOTES_PRESETS = [1, 2, 3, 5]
 const MAX_VOTES_LIMIT = 20
 
-/** 상태별 설명과 다음 단계 버튼 (before → open → closed, closed → open 다시 열기) */
 const VOTING_STEPS: Record<VotingStatus, { text: string; next: VotingStatus; action: string }> = {
   before: { text: '투표 시작 전이에요 (투표 불가, 결과 비공개)', next: 'open', action: '투표 시작' },
   open: { text: '투표 중이에요', next: 'closed', action: '투표 종료' },
@@ -56,10 +56,9 @@ export default function SettingsPage() {
     setBusyId(null)
   }
 
-  // 투표 초기화: 이 학급의 표만 지우고 질문과 투표 설정은 그대로 둡니다. 권한은 서버(RPC)에서 확인합니다.
   const resetVotes = async (c: ClassRoom) => {
     const ok = window.confirm(
-      `「${c.name}」의 투표를 모두 초기화할까요?\n\n학생들이 한 표가 모두 지워지고 되돌릴 수 없어요.\n질문과 투표 설정(투표 상태, 투표 개수, 공개 설정 등)은 그대로 유지돼요.`,
+      `「${c.name}」의 투표를 모두 초기화할까요?\n\n학생들이 한 표가 모두 지워지고 되돌릴 수 없어요.\n질문과 투표 설정은 그대로 유지돼요.`,
     )
     if (!ok) return
     setBusyId(c.id)
@@ -105,9 +104,7 @@ export default function SettingsPage() {
             투표 설정
           </h2>
           <p className="mb-4 text-ink-soft">학급마다 따로 정해요. 선생님 화면에서는 투표 수가 항상 보여요.</p>
-          {classes.length === 0 ? (
-            <NoClassYet />
-          ) : (
+          {classes.length === 0 ? <NoClassYet /> : (
             <ul className="flex flex-col divide-y-2 divide-line">
               {classes.map((c) => (
                 <ClassVoteSettings
@@ -125,14 +122,57 @@ export default function SettingsPage() {
         <Card>
           <h2 className="mb-1 flex items-center gap-2 font-display text-2xl">
             <MessageSquareText className="size-7 text-lilac-ink" aria-hidden />
+            생각 나누기 설정
+          </h2>
+          <p className="mb-4 text-ink-soft">
+            질문마다 학생이 자기 생각을 한 번 남기고 수정할 수 있어요. 학생끼리 작성자를 익명으로 볼지, 번호와 이름으로 볼지도 정할 수 있어요. 선생님에게는 항상 작성자가 보여요.
+          </p>
+          {classes.length === 0 ? <NoClassYet /> : (
+            <ul className="flex flex-col divide-y-2 divide-line">
+              {classes.map((c) => (
+                <li key={`thought:${c.id}`} className="flex flex-col gap-3 py-5">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xl font-bold">{c.name}</p>
+                      <p className="text-sm text-ink-soft">질문에 대한 자기 생각·친구 생각 나누기</p>
+                    </div>
+                    <Toggle
+                      label={`${c.name} 생각 나누기`}
+                      checked={c.thought_sharing_enabled}
+                      disabled={busyId === c.id}
+                      onChange={(next) => updateClass(c, { thought_sharing_enabled: next })}
+                    />
+                  </div>
+                  <div className="rounded-2xl bg-cream px-4 py-3">
+                    <p className="mb-2 font-bold">학생 화면 작성자 표시</p>
+                    <ChoiceChips<ThoughtAuthorMode>
+                      size="sm"
+                      options={[
+                        { value: 'anonymous', label: '익명으로 보이기' },
+                        { value: 'named', label: '번호·이름으로 보이기' },
+                      ]}
+                      value={c.thought_author_mode}
+                      onChange={(next) => updateClass(c, { thought_author_mode: next })}
+                    />
+                    <p className="mt-2 text-sm text-ink-soft">
+                      {c.thought_author_mode === 'anonymous' ? '학생끼리는 「익명의 생각」으로 보여요.' : '학생끼리도 「3번 홍길동」처럼 보여요.'}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+
+        <Card>
+          <h2 className="mb-1 flex items-center gap-2 font-display text-2xl">
+            <MessageSquareText className="size-7 text-lilac-ink" aria-hidden />
             교사 피드백 설정
           </h2>
           <p className="mb-4 text-ink-soft">
             좋아요와 코멘트를 학급마다 따로 켜고 끌 수 있어요. 꺼도 기존 피드백은 지워지지 않고, 다시 켜면 그대로 보여요.
           </p>
-          {classes.length === 0 ? (
-            <NoClassYet />
-          ) : (
+          {classes.length === 0 ? <NoClassYet /> : (
             <ul className="flex flex-col divide-y-2 divide-line">
               {classes.map((c) => (
                 <li key={`feedback:${c.id}`} className="flex flex-col gap-3 py-5">
@@ -140,10 +180,7 @@ export default function SettingsPage() {
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div className="flex items-center justify-between gap-3 rounded-2xl bg-cream px-4 py-3">
                       <div className="min-w-0">
-                        <p className="flex items-center gap-2 font-bold">
-                          <Star className="size-5 text-butter-ink" aria-hidden />
-                          선생님 좋아요
-                        </p>
+                        <p className="flex items-center gap-2 font-bold"><Star className="size-5 text-butter-ink" aria-hidden />선생님 좋아요</p>
                         <p className="text-sm text-ink-soft">질문에 별표를 남기고 학생이 확인할 수 있어요.</p>
                       </div>
                       <Toggle
@@ -155,10 +192,7 @@ export default function SettingsPage() {
                     </div>
                     <div className="flex items-center justify-between gap-3 rounded-2xl bg-cream px-4 py-3">
                       <div className="min-w-0">
-                        <p className="flex items-center gap-2 font-bold">
-                          <MessageSquareText className="size-5 text-lilac-ink" aria-hidden />
-                          선생님 코멘트
-                        </p>
+                        <p className="flex items-center gap-2 font-bold"><MessageSquareText className="size-5 text-lilac-ink" aria-hidden />선생님 코멘트</p>
                         <p className="text-sm text-ink-soft">질문마다 짧은 글 피드백을 남길 수 있어요.</p>
                       </div>
                       <Toggle
@@ -184,9 +218,7 @@ export default function SettingsPage() {
               <Label htmlFor="display-name">이름</Label>
               <Input id="display-name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} maxLength={40} placeholder="김선생" />
             </div>
-            <Button size="lg" variant="sky" onClick={saveName} loading={savingName}>
-              {savedName ? '저장됨!' : '저장'}
-            </Button>
+            <Button size="lg" variant="sky" onClick={saveName} loading={savingName}>{savedName ? '저장됨!' : '저장'}</Button>
           </div>
           <p className="mt-3 text-ink-soft">{profile?.email}</p>
         </Card>
@@ -231,13 +263,8 @@ function ClassVoteSettings({
           <p className="truncate text-xl font-bold">{c.name}</p>
           <p className="text-ink-soft">{step.text}</p>
         </div>
-        <Button
-          variant={c.voting_status === 'open' ? 'danger' : 'mint'}
-          loading={busy}
-          onClick={() => onChange({ voting_status: step.next })}
-        >
-          {c.voting_status === 'open' ? <Square className="size-5" aria-hidden /> : <Play className="size-5" aria-hidden />}
-          {step.action}
+        <Button variant={c.voting_status === 'open' ? 'danger' : 'mint'} loading={busy} onClick={() => onChange({ voting_status: step.next })}>
+          {c.voting_status === 'open' ? <Square className="size-5" aria-hidden /> : <Play className="size-5" aria-hidden />}{step.action}
         </Button>
       </div>
 
@@ -256,46 +283,28 @@ function ClassVoteSettings({
           />
           {custom && (
             <Input
-              type="number"
-              min={1}
-              max={MAX_VOTES_LIMIT}
-              value={customValue}
-              onChange={(e) => setCustomValue(e.target.value)}
-              onBlur={saveCustom}
+              type="number" min={1} max={MAX_VOTES_LIMIT} value={customValue}
+              onChange={(e) => setCustomValue(e.target.value)} onBlur={saveCustom}
               onKeyDown={(e) => e.key === 'Enter' && saveCustom()}
-              aria-label={`${c.name} 1인당 투표 개수`}
-              className="w-24"
+              aria-label={`${c.name} 1인당 투표 개수`} className="w-24"
             />
           )}
         </div>
-        <p className="mt-1 text-sm text-ink-soft">
-          1~{MAX_VOTES_LIMIT}개. 개수를 줄여도 이미 한 표는 지워지지 않고, 학생이 줄인 개수까지 취소할 수 있어요.
-        </p>
+        <p className="mt-1 text-sm text-ink-soft">1~{MAX_VOTES_LIMIT}개. 개수를 줄여도 이미 한 표는 지워지지 않고, 학생이 줄인 개수까지 취소할 수 있어요.</p>
       </div>
 
       <ul className="grid gap-3 sm:grid-cols-2">
         {toggles.map((t) => (
           <li key={t.key} className="flex items-center justify-between gap-3 rounded-2xl bg-cream px-4 py-3">
-            <div className="min-w-0">
-              <p className="font-bold">{t.label}</p>
-              <p className="text-sm text-ink-soft">{t.hint}</p>
-            </div>
-            <Toggle
-              label={`${c.name} ${t.label}`}
-              checked={Boolean(c[t.key])}
-              disabled={busy}
-              onChange={(next) => onChange({ [t.key]: next })}
-            />
+            <div className="min-w-0"><p className="font-bold">{t.label}</p><p className="text-sm text-ink-soft">{t.hint}</p></div>
+            <Toggle label={`${c.name} ${t.label}`} checked={Boolean(c[t.key])} disabled={busy} onChange={(next) => onChange({ [t.key]: next })} />
           </li>
         ))}
       </ul>
 
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border-2 border-dashed border-line px-4 py-3">
         <p className="text-sm text-ink-soft">학생들이 한 표를 모두 지워요. 질문과 위 설정은 그대로예요.</p>
-        <Button size="sm" variant="danger" disabled={busy} onClick={onReset}>
-          <RotateCcw className="size-4" aria-hidden />
-          투표 초기화
-        </Button>
+        <Button size="sm" variant="danger" disabled={busy} onClick={onReset}><RotateCcw className="size-4" aria-hidden />투표 초기화</Button>
       </div>
     </li>
   )
