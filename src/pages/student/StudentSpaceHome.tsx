@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowRight, Lightbulb, LogOut, MessageCircleQuestion, NotebookTabs, UserRound } from 'lucide-react'
+import { ArrowRight, CalendarDays, Lightbulb, LogOut, MessageCircleQuestion, UserRound } from 'lucide-react'
 import { Button, Card, ErrorBox, Spinner } from '../../components/ui'
 import { useAuth } from '../../contexts/AuthContext'
 import { toMessage } from '../../lib/errors'
@@ -64,16 +64,11 @@ export default function StudentSpaceHome() {
       </header>
 
       <main className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-8">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-lg text-ink-soft">{me.class_name}</p>
-            <p className="flex items-center gap-2 text-xl font-bold">
-              <UserRound className="size-5" aria-hidden />{me.student_number}번 {me.student_name}
-            </p>
-          </div>
-          <Button variant="secondary" onClick={() => navigate('/student/my-questions')}>
-            <NotebookTabs className="size-5" aria-hidden />내 질문 모아보기
-          </Button>
+        <div>
+          <p className="text-lg text-ink-soft">{me.class_name}</p>
+          <p className="flex items-center gap-2 text-xl font-bold">
+            <UserRound className="size-5" aria-hidden />{me.student_number}번 {me.student_name}
+          </p>
         </div>
 
         <div className="text-center">
@@ -90,9 +85,14 @@ export default function StudentSpaceHome() {
               <h3 className="font-display text-3xl">❓ 질문 상자</h3>
               <p className="mt-2 text-lg text-ink-soft">궁금한 것을 질문하고, 친구 생각을 만나며 질문을 발전시켜요.</p>
             </div>
-            <Button size="lg" variant="sky" onClick={() => navigate('/student/board')}>
-              질문 상자 들어가기 <ArrowRight className="size-5" aria-hidden />
-            </Button>
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button size="lg" variant="sky" onClick={() => navigate('/student/board')}>
+                질문 상자 들어가기 <ArrowRight className="size-5" aria-hidden />
+              </Button>
+              <Button variant="secondary" onClick={() => navigate('/student/question-gallery')}>
+                <CalendarDays className="size-5" aria-hidden />지난 질문 갤러리
+              </Button>
+            </div>
           </Card>
 
           <Card className="flex min-h-80 flex-col items-center justify-center gap-5 bg-mint-soft/60 p-7 text-center">
