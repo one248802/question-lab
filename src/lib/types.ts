@@ -51,6 +51,16 @@ export interface TeacherQuestion {
   vote_count: number
 }
 
+/** 교사 질문 폴더 (질문 ↔ 폴더 연결 방식, 한 질문이 여러 폴더에 들어갈 수 있음) */
+export interface QuestionFolder {
+  id: string
+  class_id: string
+  name: string
+  created_at: string
+  /** 이 폴더에 든 질문 id */
+  question_ids: string[]
+}
+
 /** 학생 화면용 질문 (작성자 정보 없음) */
 export interface BoardQuestion {
   id: string

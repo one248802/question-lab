@@ -1,6 +1,6 @@
 # PROJECT_STATUS — 우리반 질문 상자
 
-> 마지막 정리: 2026-10-03 (실제 배포 사용 중. PR #9 비밀번호 재설정까지 병합, 질문 카드 배치·학생 수 링크 UX PR 작업 중)
+> 마지막 정리: 2026-10-03 (실제 배포 사용 중. PR #10 UX 개선까지 병합, 날짜별 질문 보기 + 교사 질문 폴더 PR 진행 중 — migration 실제 DB 적용 완료)
 > 다음 세션은 이 문서만 읽고 이어서 작업할 수 있도록 작성했습니다. 맨 아래 **작업 재개 프롬프트**를 그대로 붙여 넣으세요.
 
 ---
@@ -41,7 +41,8 @@
   | [one248802/question-lab#7](https://github.com/one248802/question-lab/pull/7) | PROJECT_STATUS.md 갱신 (PR #6 반영) | ✅ 병합 (`f03f936`) |
   | [one248802/question-lab#8](https://github.com/one248802/question-lab/pull/8) | 로그인/재접속 UX: 첫 화면 자동 재진입, 학생 일시 오류 처리, 클래스 코드 기억하기. DB 변경 없음 | ✅ 병합 (`194d557`) |
   | [one248802/question-lab#9](https://github.com/one248802/question-lab/pull/9) | 교사 비밀번호 재설정 (Supabase 기본 recovery 메일 → `/reset-password`). DB 변경 없음 | ✅ 병합 (`bb567cb`) |
-  | (작업 중) | UX: 질문 카드 1~3열, 대시보드 학생 수 → 학생 관리. 프론트만 | 브랜치 `claude/question-grid-student-count` |
+  | [one248802/question-lab#10](https://github.com/one248802/question-lab/pull/10) | UX: 질문 카드 1~3열, 대시보드 학생 수 → 학생 관리. 프론트만 | ✅ 병합 (`edb7850`) |
+  | (작업 중) | 날짜별 질문 보기 + 질문 선택 + 교사 질문 폴더 (migration `20261003120000`) | 브랜치 `claude/question-folders` |
   | [one248802/question-lab#6](https://github.com/one248802/question-lab/pull/6) | 질문 분류 활동 PR B: 분류 화면 drag & drop(dnd-kit), 분류 결과 PNG 저장. DB/API/migration 변경 없음 | ✅ 병합 (`977329c`) |
 
 - **PR #2에 들어간 주요 커밋**
@@ -86,7 +87,13 @@
 - **학생 관리** (`/teacher/students`): 목록, 수정, 삭제
 
 ### 질문
-- **질문 카드 배치** (UX PR, 프론트만): 학생 게시판·교사 질문 화면 모두 질문 목록이 차지하는 폭 기준(container query)으로 1열 → 2열(34rem 이상) → 3열(54rem 이상). 휴대폰 1열, 태블릿 2열, 노트북(1280px)·데스크톱 3열. 글자 크기(본문 20px)는 질문 수나 열 수와 상관없이 그대로, 카드 높이는 내용만큼(같은 줄 카드는 높이를 맞추고 투표·작성자·버튼은 카드 아래쪽). 학생 게시판 최대 폭 72rem → 90rem
+- **날짜별 질문 보기 · 질문 선택 · 교사 질문 폴더** (브랜치 `claude/question-folders`, migration `20261003120000_question_folders.sql`):
+  - 교사 질문 화면에 날짜 필터 [전체] [오늘] [이번 주(월요일부터)] [날짜 선택] — 질문 `created_at`, 브라우저 시간 기준, DB 변경 없이 화면에서 거름
+  - 폴더 필터 [전체 질문 N] [폴더 N]… [+ 새 폴더]. 날짜·폴더·공개/숨김·정렬을 함께 적용
+  - 질문 카드마다 체크박스, 「N개 질문 선택됨」, 전체 선택(지금 보이는 질문)/선택 해제, 폴더에 넣기(기존 폴더 또는 새 폴더 만들고 넣기, 이미 든 질문은 건너뜀), 폴더 보기 중 「이 폴더에서 빼기」, 폴더 이름 바꾸기·지우기. 카드에 들어 있는 폴더 이름 표시
+  - DB: `question_folders`(학급별, 이름 1~30자, 학급 안에서 이름 중복 불가) + `question_folder_items`(폴더 ↔ 질문 연결, (folder_id, question_id) 기본키). 질문을 옮기지 않으므로 한 질문을 여러 폴더에 넣을 수 있고, 폴더를 지워도 질문은 남음. 질문·학급·폴더 삭제 시 연결은 cascade. 트리거로 같은 학급 질문만 넣을 수 있음. RLS: 담당 교사만(owns_class), 학생·anon 접근 불가. 폴더는 질문 목록과 따로 불러와서, 폴더 테이블이 없어도 질문 보기·숨기기·삭제는 동작
+  - 이번에 하지 않은 것: 학생 화면 폴더, 학생별 포트폴리오, 교사 좋아요, 질문 성장 이력
+- **질문 카드 배치** (PR #10, 프론트만): 학생 게시판·교사 질문 화면 모두 질문 목록이 차지하는 폭 기준(container query)으로 1열 → 2열(34rem 이상) → 3열(54rem 이상). 휴대폰 1열, 태블릿 2열, 노트북(1280px)·데스크톱 3열. 글자 크기(본문 20px)는 질문 수나 열 수와 상관없이 그대로, 카드 높이는 내용만큼(같은 줄 카드는 높이를 맞추고 투표·작성자·버튼은 카드 아래쪽). 학생 게시판 최대 폭 72rem → 90rem
 - **대시보드 학생 수 링크**: 학급 카드의 「학생 N」을 누르면 그 학급이 선택된 학생 관리(`/teacher/students`), 「전체 학생」을 누르면 지금 선택된 학급의 학생 관리(위에서 학급 변경). 학급 선택은 기존 「질문 보기」와 같은 `setSelectedClassId`
 - **익명 질문 등록**: `create_question(p_content text)`. 내용만 입력하고 유형은 고르지 않습니다. 1~300자이고, 3초 안에 다시 올리는 것은 막습니다.
 - **학생에게 작성자 비공개**: 학생은 테이블에 직접 접근할 수 없고 `list_class_questions` RPC만 씁니다. 이 RPC는 작성자 정보 없이 `is_mine`만 돌려줍니다.
@@ -154,6 +161,7 @@
 | `./scripts/test-db.sh` | ✅ 모든 migration을 순서대로(파일마다 단일 트랜잭션) 적용한 뒤, 테스트 파일마다 새 DB 복사본에서 실행. **121/121 통과** |
 | `supabase/tests/voting_test.sql` | 50개: profiles 트리거, 기본값, before/open/closed 규칙, 상태 전환, max_votes 감소, 자기 투표, 결과 공개 조합, 숨김, 권한 |
 | `supabase/tests/classification_activity_test.sql` | 44개: 활동 만들기/수정 검증(영역 2~5개·이름·중복·제목·질문 필수·다른 학급 질문 거부), 권한(다른 교사·학생·비로그인 불가, 교사도 RPC 외 직접 수정 불가), 공개 전 비노출, 여러 활동 동시 공개, 학생 응답은 제목·영역·질문(id, 내용)만, 숨긴 질문 제외, 다른 반 학생 차단, 질문/활동/학급 삭제 cascade, 질문 수·투표 수·학급 통계 그대로, 결과 저장 테이블 없음 |
+| `supabase/tests/question_folders_test.sql` | 34개 (`./scripts/test-db.sh question_folders` 로 이 파일만 실행): 폴더 만들기(이름 중복·빈 이름·31자·앞뒤 공백 거부, 다른 학급은 같은 이름 가능), 권한(다른 교사·학생 만들기/넣기/빼기/이름 변경/삭제 불가, 학생·다른 교사에게 안 보임, anon 접근 불가), 여러 폴더에 넣기, 중복 넣기 무시, 다른 학급 질문 거부, 폴더 학급 변경·연결 행 수정 불가, 폴더에서 빼기·폴더 삭제 시 질문 유지, 질문 삭제·학급 삭제 시 연결 cascade, 학생 질문 목록·투표 그대로 |
 | `supabase/tests/question_delete_reset_test.sql` | 27개: 질문 삭제 권한(학생·다른 교사 불가), 표 cascade 삭제와 표 돌려받기, 학생 목록에서 사라짐, 투표 초기화 권한(학생·다른 교사·비로그인 불가), 학급 표만 삭제, 질문·설정 유지, 다른 학급 영향 없음, 초기화 후 재투표 |
 | `npm run build` | ✅ 통과. 번들 500kB 초과 경고만 있음 |
 | `npm run lint` | 에러 0. **경고 9개** (모두 예전부터 있던 것: `set-state-in-effect`, `only-export-components`. 재접속 작업에서 학생 입장 화면 경고 1개가 없어짐) |
@@ -171,7 +179,7 @@
 
 - 검증한 흐름: 교사 회원가입·로그아웃·로그인 → profiles 자동 생성 → 학급 생성·클래스 코드 → 학생 익명 로그인·입장(틀린 코드, 이름 불일치 거부) → 질문 등록(내용만, 3초 제한, 빈 질문 거부) → 익명성(학생 화면·학생이 받은 응답에 작성자 없음, 학생의 테이블 직접 조회/추가 불가, 내부 함수 호출 불가) → 교사만 작성자 확인 → before/open/closed 규칙과 잘못된 전환 거부 → max_votes(줄여도 기존 표 유지, 초과분 취소) → 자기 질문 투표 → 투표 바꾸기 → 투표 중/종료 후 결과 공개 → 다시 열기 → 질문 숨기기 → 모바일 폭(390px) 가로 스크롤 없음
 - **앱 버그는 발견되지 않았습니다.** 고친 것은 테스트 스크립트(선택자, 투표 응답 대기)와 테스트 환경(아래)뿐입니다.
-- 두 스크립트 모두 끝나면 테스트 학급을 지웁니다(학생·질문·투표 함께 삭제). **테스트용 교사 계정(`qlab.e2e.*@gmail.com`, `qlab.browser.*@gmail.com`, `qlab.reset.*@gmail.com`, `qlab.ux.*@gmail.com`)과 익명 사용자는 Authentication → Users 에 남습니다** (publishable key로는 지울 수 없음). 대시보드에서 지워도 됩니다.
+- 두 스크립트 모두 끝나면 테스트 학급을 지웁니다(학생·질문·투표 함께 삭제). **테스트용 교사 계정(`qlab.e2e.*@gmail.com`, `qlab.browser.*@gmail.com`, `qlab.reset.*@gmail.com`, `qlab.ux.*@gmail.com`, `qlab.folder.*@gmail.com`)과 익명 사용자는 Authentication → Users 에 남습니다** (publishable key로는 지울 수 없음). 대시보드에서 지워도 됩니다.
 - 브라우저 테스트 환경 주의: 이 클라우드 환경의 Chromium은 프록시 CA를 신뢰하지 않아 Supabase 요청이 `ERR_CERT_AUTHORITY_INVALID`로 실패했습니다. `/root/.ccr/ca-bundle.crt`의 인증서를 `certutil`로 `~/.pki/nssdb`에 등록해 해결했습니다(TLS 검증은 끄지 않음). 새 컨테이너에서는 다시 해야 할 수 있습니다:
   ```bash
   apt-get install -y libnss3-tools
@@ -190,6 +198,7 @@
 | **migration** | ✅ **적용 완료 (2026-10-02)**. 현재 main의 `20261001000000_init.sql`을 SQL Editor에서 실행. 그 전에 PR #1 시절 구버전 migration이 실행되어 있어서 `supabase/dev/reset_app_schema.sql`로 앱 객체만 정리한 뒤 다시 적용 |
 | migration `20261002120000_reset_class_votes.sql` | ✅ 적용 완료 (2026-10-02, SQL Editor). 투표 초기화 RPC |
 | migration `20261002150000_classification_activities.sql` | ✅ 적용 완료 (2026-10-02, SQL Editor). 질문 분류 활동 |
+| migration `20261003120000_question_folders.sql` | ✅ 적용 완료 (2026-10-03, SQL Editor). 교사 질문 폴더. `scripts/e2e-folders.mjs` 29/29(실제 DB 구간 B 포함) |
 | Anonymous Sign-ins | ✅ 켜져 있음. 실제 익명 로그인으로 학생 입장 확인 |
 | Confirm email | 꺼져 있음 (`mailer_autoconfirm: true`, 가입하면 바로 로그인). 운영 전 결정 필요 |
 | Site URL | 확인하지 않음. 배포 후 Authentication → URL Configuration에서 설정 |
@@ -202,7 +211,7 @@
 
 모든 작업은 최신 `main`에서 새 브랜치를 만들어 시작하고, DB 변경은 **새 migration 파일**로 합니다.
 
-1. UX PR(`claude/question-grid-student-count`) 병합. 다른 교사도 비밀번호 재설정을 쓰려면 Custom SMTP 설정
+1. 질문 폴더 PR(`claude/question-folders`) 병합 (migration 실제 DB 적용·확인 완료). 다른 교사도 비밀번호 재설정을 쓰려면 Custom SMTP 설정
    - 나중에 학생별 질문 모아보기는 학생 관리(`StudentsPage`)의 학생 줄에서 여는 방식으로 붙이면 됨 (이미 학생별 질문 수를 불러옴)
 2. 실제 휴대폰·태블릿에서 질문 분류 활동 확인: long-press drag & drop, swipe scroll, PNG save/share (4번 「질문 분류 활동」의 미검증 항목)
 3. 실제 사용 중 학생 로그인이 풀렸다고 느껴지면: 그때 화면이 「계속하기」였는지 빈 입장 폼이었는지, 기기·브라우저·링크를 연 방법(인앱 브라우저 여부) 기록
@@ -258,6 +267,9 @@
 | `src/lib/studentSession.ts`, `src/components/ConnectionRetry.tsx` | 학생 조회(joined / not_joined / 일시적 error 구분, 재시도), 연결 불안정 시 다시 시도 화면 |
 | `src/pages/Home.tsx` | 첫 화면 + 교사·학생 자동 재진입 |
 | `src/pages/teacher/ResetPassword.tsx`, `src/lib/authRedirect.ts` | 비밀번호 재설정 화면(`/reset-password`), 메일 링크 주소(# 값) 읽기와 `RecoveryGate` 용 상태 |
+| `supabase/migrations/20261003120000_question_folders.sql` | 교사 질문 폴더 테이블 2개, 같은 학급 검사 트리거, RLS |
+| `src/components/QuestionFolders.tsx` | 교사 질문 화면의 폴더 줄(FolderBar)과 선택 도구(SelectionBar) |
+| `scripts/e2e-folders.mjs` | 날짜 필터·선택·폴더 브라우저 검증 (A: 가짜 응답, B: 실제 DB — 테이블이 있을 때만) |
 | `scripts/e2e-ux.mjs` | 질문 카드 배치·학생 수 링크 브라우저 검증 (`npm run dev` 후 `node scripts/e2e-ux.mjs`) |
 | `scripts/e2e-password-reset.mjs` | 비밀번호 재설정 브라우저 검증 (`npm run dev` 후 `node scripts/e2e-password-reset.mjs`) |
 | `src/lib/types.ts` | `ClassRoom`, `StudentContext`, `VotingStatus` 등 타입 |
