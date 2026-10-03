@@ -7,6 +7,7 @@
 // 실행:
 //   1) npm run dev            (다른 터미널, .env 또는 환경 변수에 Supabase 값 필요)
 //   2) node scripts/e2e-folders.mjs
+//   - ONLY_MOCK=1 이면 A 만 실행 (실제 DB 구간 B 는 건너뜀)
 //   - 끝나면 테스트 학급을 지웁니다. 교사 계정(qlab.folder.*@gmail.com)과 익명 사용자는 Authentication → Users 에 남습니다.
 import { chromium } from 'playwright-core'
 import { mkdirSync } from 'node:fs'
@@ -328,16 +329,52 @@ try {
   check('A23 휴대폰 폭(390px)에서 가로 스크롤 없음', await teacher.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1))
   await shot(teacher, 'folders-02-mobile')
   await teacher.setViewportSize({ width: 1280, height: 900 })
+
+  // 「폴더 없음」 가상 필터: 지금 폴더는 「좋은 질문」(한 달 전 질문 1, 오늘 질문 1)만 남음, 질문 11개
+  const noFolder = chip('폴더 없음')
+  check('A24 "폴더 없음 9" (어느 폴더에도 없는 질문 수)', await waitChip('폴더 없음', 9))
+  await noFolder.click()
+  check('A25 "폴더 없음" → 폴더에 든 질문(한 달 전 질문 1, 오늘 질문 1)은 빠지고 9개', (await waitCards(9)) && (await card('한 달 전 질문 1').count()) === 0 && (await card('오늘 질문 1').count()) === 0)
+  check(
+    'A26 "폴더 없음"에는 이름 바꾸기·폴더 지우기·이 폴더에서 빼기 없음',
+    (await teacher.getByRole('button', { name: '이름 바꾸기' }).count()) === 0 &&
+      (await teacher.getByRole('button', { name: '폴더 지우기' }).count()) === 0 &&
+      (await teacher.getByRole('button', { name: '이 폴더에서 빼기' }).count()) === 0,
+  )
+  await setDate('오늘')
+  const todayNoFolder = await waitCards(2)
+  await teacher.getByRole('radio', { name: '숨김', exact: true }).click()
+  const todayHiddenNoFolder = await waitCards(1)
+  await teacher.getByRole('radio', { name: '모두', exact: true }).click()
+  await setDate('전체')
+  await teacher.getByRole('radio', { name: '투표순', exact: true }).click()
+  const sortedNoFolder = await waitCards(9)
+  await teacher.getByRole('radio', { name: '최신순', exact: true }).click()
+  check('A27 날짜(오늘 2개)·숨김(1개)·정렬과 함께 사용', todayNoFolder && todayHiddenNoFolder && sortedNoFolder)
+
+  await pick('오늘 질문 2')
+  await pick('사흘 전 질문')
+  await teacher.getByRole('button', { name: '폴더에 넣기' }).click()
+  await teacher.getByRole('button', { name: '좋은 질문', exact: true }).click()
+  await teacher.getByText('「좋은 질문」 폴더에 2개 넣었어요').waitFor({ timeout: 5000 })
+  check(
+    'A28 "폴더 없음"에서 골라 폴더에 넣기 → 바로 사라지고 폴더 없음 7, 좋은 질문 4',
+    (await waitCards(7)) && (await waitChip('폴더 없음', 7)) && (await waitChip('좋은 질문', 4)) && (await card('사흘 전 질문').count()) === 0,
+  )
+  await shot(teacher, 'folders-03-no-folder')
   await teacher.unrouteAll({ behavior: 'ignoreErrors' })
 
   // -------------------------------------------------------------------
   // B. 실제 DB (migration 적용 시)
   // -------------------------------------------------------------------
   console.log('== B. 실제 Supabase 폴더 테이블')
-  const probe = await fetch(`${SB_URL}/rest/v1/question_folders?select=id&limit=1`, { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } })
+  const probe = process.env.ONLY_MOCK ? { status: -1, body: '' } : await fetch(`${SB_URL}/rest/v1/question_folders?select=id&limit=1`, { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } })
     .then(async (r) => ({ status: r.status, body: await r.text() }))
     .catch((e) => ({ status: 0, body: String(e) }))
-  if (probe.status === 404 || probe.body.includes('PGRST205')) {
+  if (probe.status === -1) {
+    skipped++
+    console.log('SKIP B: ONLY_MOCK=1')
+  } else if (probe.status === 404 || probe.body.includes('PGRST205')) {
     skipped++
     console.log('SKIP B: 실제 Supabase 에 question_folders 테이블이 아직 없음 (migration 적용 후 다시 실행)')
   } else {
