@@ -22,3 +22,17 @@ export function timeAgo(iso: string): string {
   if (diff < 86400) return `${Math.floor(diff / 3600)}시간 전`
   return new Date(iso).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })
 }
+
+/** 브라우저 기준 날짜 키 "YYYY-MM-DD" (날짜별 질문 보기, <input type="date"> 값과 같은 형식) */
+export function localDateKey(value: string | Date): string {
+  const d = typeof value === 'string' ? new Date(value) : value
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/** 이번 주 월요일 0시 (브라우저 기준) */
+export function startOfWeek(now = new Date()): Date {
+  const d = new Date(now)
+  d.setHours(0, 0, 0, 0)
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7))
+  return d
+}
