@@ -1,4 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
+// supabase-js 가 메일 링크 주소(#…)를 지우기 전에 먼저 읽어 두도록 가장 먼저 불러옴
+import './authRedirect'
 
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined
 // Supabase 대시보드의 publishable key(구 anon key). 예전 이름도 계속 지원합니다.
