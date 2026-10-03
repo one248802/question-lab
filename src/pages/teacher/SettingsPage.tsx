@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Heart, Play, RotateCcw, Settings, Square, UserRound } from 'lucide-react'
+import { Heart, MessageSquareText, Play, RotateCcw, Settings, Square, Star, UserRound } from 'lucide-react'
 import { NoClassYet } from '../../components/ClassPicker'
 import { Button, Card, ChoiceChips, ErrorBox, Input, Label, PageTitle, Spinner, Toggle } from '../../components/ui'
 import { useTeacher } from '../../contexts/TeacherContext'
@@ -18,6 +18,9 @@ type VoteSettingsPatch = Partial<
     | 'show_results_after_voting'
   >
 >
+
+type FeedbackSettingsPatch = Partial<Pick<ClassRoom, 'teacher_like_enabled' | 'teacher_comment_enabled'>>
+type ClassSettingsPatch = VoteSettingsPatch & FeedbackSettingsPatch
 
 const MAX_VOTES_PRESETS = [1, 2, 3, 5]
 const MAX_VOTES_LIMIT = 20
@@ -43,7 +46,7 @@ export default function SettingsPage() {
     setDisplayName(profile?.display_name ?? '')
   }, [profile])
 
-  const updateClass = async (c: ClassRoom, patch: VoteSettingsPatch) => {
+  const updateClass = async (c: ClassRoom, patch: ClassSettingsPatch) => {
     setBusyId(c.id)
     setError(null)
     setNotice(null)
@@ -114,6 +117,59 @@ export default function SettingsPage() {
                   onChange={(patch) => updateClass(c, patch)}
                   onReset={() => resetVotes(c)}
                 />
+              ))}
+            </ul>
+          )}
+        </Card>
+
+        <Card>
+          <h2 className="mb-1 flex items-center gap-2 font-display text-2xl">
+            <MessageSquareText className="size-7 text-lilac-ink" aria-hidden />
+            교사 피드백 설정
+          </h2>
+          <p className="mb-4 text-ink-soft">
+            좋아요와 코멘트를 학급마다 따로 켜고 끌 수 있어요. 꺼도 기존 피드백은 지워지지 않고, 다시 켜면 그대로 보여요.
+          </p>
+          {classes.length === 0 ? (
+            <NoClassYet />
+          ) : (
+            <ul className="flex flex-col divide-y-2 divide-line">
+              {classes.map((c) => (
+                <li key={`feedback:${c.id}`} className="flex flex-col gap-3 py-5">
+                  <p className="text-xl font-bold">{c.name}</p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="flex items-center justify-between gap-3 rounded-2xl bg-cream px-4 py-3">
+                      <div className="min-w-0">
+                        <p className="flex items-center gap-2 font-bold">
+                          <Star className="size-5 text-butter-ink" aria-hidden />
+                          선생님 좋아요
+                        </p>
+                        <p className="text-sm text-ink-soft">질문에 별표를 남기고 학생이 확인할 수 있어요.</p>
+                      </div>
+                      <Toggle
+                        label={`${c.name} 선생님 좋아요`}
+                        checked={c.teacher_like_enabled}
+                        disabled={busyId === c.id}
+                        onChange={(next) => updateClass(c, { teacher_like_enabled: next })}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between gap-3 rounded-2xl bg-cream px-4 py-3">
+                      <div className="min-w-0">
+                        <p className="flex items-center gap-2 font-bold">
+                          <MessageSquareText className="size-5 text-lilac-ink" aria-hidden />
+                          선생님 코멘트
+                        </p>
+                        <p className="text-sm text-ink-soft">질문마다 짧은 글 피드백을 남길 수 있어요.</p>
+                      </div>
+                      <Toggle
+                        label={`${c.name} 선생님 코멘트`}
+                        checked={c.teacher_comment_enabled}
+                        disabled={busyId === c.id}
+                        onChange={(next) => updateClass(c, { teacher_comment_enabled: next })}
+                      />
+                    </div>
+                  </div>
+                </li>
               ))}
             </ul>
           )}

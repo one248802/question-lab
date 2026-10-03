@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
-import { Check, Pencil, Plus, Trash2, Users, X } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Check, ChevronRight, Pencil, Plus, Trash2, Users, X } from 'lucide-react'
 import { ClassPicker, NoClassYet } from '../../components/ClassPicker'
 import { ClassCode } from '../../components/ClassCode'
 import { Button, Card, EmptyState, ErrorBox, Input, PageTitle, Spinner } from '../../components/ui'
@@ -102,6 +103,7 @@ export default function StudentsPage() {
             <div className="overflow-hidden rounded-3xl border-2 border-line bg-paper shadow-pop">
               <div className="flex items-center justify-between border-b-2 border-line px-5 py-3">
                 <span className="text-lg font-bold">학생 {students.length}명</span>
+                <span className="text-sm text-ink-soft">학생을 누르면 질문을 볼 수 있어요.</span>
               </div>
               <ul className="divide-y-2 divide-line">
                 {students.map((s) => (
@@ -167,13 +169,20 @@ function StudentItem({ s, onChanged, onError }: { s: StudentRow; onChanged: () =
         </>
       ) : (
         <>
-          <span className="flex size-12 items-center justify-center rounded-2xl bg-sky-soft font-display text-2xl">{s.student_number}</span>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-xl font-bold">{s.name}</p>
-            <p className="text-sm text-ink-soft">
-              질문 {s.question_count}개 · 등록 {formatDateTime(s.created_at)}
-            </p>
-          </div>
+          <Link
+            to={`/teacher/students/${s.id}`}
+            className="group flex min-w-0 flex-1 items-center gap-3 rounded-2xl px-1 py-1 hover:bg-ink/5"
+            aria-label={`${s.student_number}번 ${s.name} 질문 보기`}
+          >
+            <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-sky-soft font-display text-2xl">{s.student_number}</span>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xl font-bold">{s.name}</p>
+              <p className="text-sm text-ink-soft">
+                질문 {s.question_count}개 · 등록 {formatDateTime(s.created_at)}
+              </p>
+            </div>
+            <ChevronRight className="size-5 shrink-0 text-ink-soft transition group-hover:translate-x-0.5" aria-hidden />
+          </Link>
           <Button size="sm" variant="ghost" onClick={() => setEditing(true)} aria-label="수정">
             <Pencil className="size-5" aria-hidden />
           </Button>

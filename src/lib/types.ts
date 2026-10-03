@@ -21,6 +21,10 @@ export interface ClassRoom {
   allow_vote_change: boolean
   show_results_during_voting: boolean
   show_results_after_voting: boolean
+  /** 학생 질문에 교사 좋아요(별) 기능 사용 */
+  teacher_like_enabled: boolean
+  /** 학생 질문에 교사 코멘트 기능 사용 */
+  teacher_comment_enabled: boolean
   created_at: string
 }
 
@@ -75,6 +79,22 @@ export interface BoardQuestion {
   vote_count: number | null
 }
 
+/** 학생의 내 질문 성장 이력 */
+export interface MyQuestionHistory {
+  id: string
+  content: string
+  created_at: string
+  parent_question_id: string | null
+  /** 뒤에 이어지는 업그레이드 버전이 없으면 true */
+  is_current: boolean
+  /** 투표 결과 비공개면 null */
+  vote_count: number | null
+  /** 교사 좋아요 기능이 꺼져 있으면 항상 false */
+  teacher_liked: boolean
+  /** 교사 코멘트 기능이 꺼져 있거나 코멘트가 없으면 null */
+  teacher_comment: string | null
+}
+
 /** 학생 입장 정보 */
 export interface StudentContext {
   student_id: string
@@ -91,6 +111,8 @@ export interface StudentContext {
   show_vote_counts: boolean
   /** 숨겨지지 않은 질문에 한 내 표 수 */
   my_vote_count: number
+  teacher_like_enabled: boolean
+  teacher_comment_enabled: boolean
 }
 
 /** 질문 분류 활동 (교사 화면) */
