@@ -17,6 +17,7 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core'
 import { ArrowLeft, ImageDown, Inbox, LayoutGrid, RefreshCw, RotateCcw } from 'lucide-react'
+import { ConnectionRetry } from '../../components/ConnectionRetry'
 import { Button, ErrorBox, EmptyState, Spinner, cx } from '../../components/ui'
 import { useAuth } from '../../contexts/AuthContext'
 import { classificationFileName, renderClassificationPng, savePngOnDevice } from '../../lib/classificationPng'
@@ -99,14 +100,23 @@ export default function StudentActivity() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [connectionError, setConnectionError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
 
   const apply = useCallback(([ctx, act]: Awaited<ReturnType<typeof fetchActivity>>) => {
+    if (ctx.error) {
+      // 일시적인 오류(네트워크·토큰 갱신 중): 입장 화면으로 보내지 않고, 지금 배치도 그대로 둠
+      setConnectionError(toMessage(ctx.error))
+      setLoading(false)
+      return
+    }
     if (!ctx.data) {
+      // 실제로 연결된 학생이 없을 때만 입장 화면으로
       navigate('/student', { replace: true })
       return
     }
+    setConnectionError(null)
     const student = ctx.data as StudentContext
     setMe(student)
     if (act.error) {
@@ -209,7 +219,14 @@ export default function StudentActivity() {
     setRefreshing(false)
   }
 
-  if (loading || !me) return <Spinner />
+  if (loading) return <Spinner />
+  if (!me) {
+    return (
+      <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-4 py-6">
+        <ConnectionRetry message={connectionError} retrying={refreshing} onRetry={refresh} />
+      </main>
+    )
+  }
 
   const zones: Array<{ area: number | null; name: string }> = [
     { area: null, name: '아직 분류하지 않은 질문' },
@@ -235,6 +252,9 @@ export default function StudentActivity() {
           <>
             <ErrorBox message={error} />
             <EmptyState icon={<LayoutGrid className="size-14" />} title="분류 활동을 열 수 없어요">
+              <Button variant="secondary" onClick={refresh} loading={refreshing} className="mt-2">
+                다시 시도
+              </Button>
               <Link to="/student/board" className="mt-2 text-lg font-bold underline">
                 우리 반 질문으로 돌아가기
               </Link>
@@ -268,6 +288,7 @@ export default function StudentActivity() {
                 ? '옮길 영역의 「여기에 놓기」를 누르세요.'
                 : '질문 카드를 끌어서 영역에 놓거나, 카드를 누른 다음 옮길 영역을 고르세요.'}
             </p>
+            {connectionError && <ErrorBox message="연결이 잠시 불안정해요. 새로고침 버튼으로 다시 시도해 주세요. 지금 배치는 그대로예요." />}
             <ErrorBox message={error} />
             {notice && (
               <p role="status" className="rounded-2xl border-2 border-[#6fc9a4] bg-mint-soft px-4 py-3 text-lg font-bold text-mint-ink">
