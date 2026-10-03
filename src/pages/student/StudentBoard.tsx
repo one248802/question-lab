@@ -135,8 +135,9 @@ export default function StudentBoard() {
   const leave = async () => {
     if (!window.confirm('나갈까요?')) return
     await supabase.rpc('leave_class')
+    // 첫 화면으로 먼저 옮긴 뒤 세션을 끝냄 (첫 화면의 자동 재진입이 끼어들지 않도록 signingOut 표시)
+    navigate('/', { replace: true, state: { signingOut: true } })
     await supabase.auth.signOut()
-    navigate('/', { replace: true })
   }
 
   const retry = async () => {

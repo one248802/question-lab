@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, Navigate } from 'react-router-dom'
+import { Link, Navigate, useLocation } from 'react-router-dom'
 import { Backpack, GraduationCap } from 'lucide-react'
 import { QuestionBoxIcon } from '../components/Logo'
 import { Spinner } from '../components/ui'
@@ -8,11 +8,13 @@ import { lookupMyStudent } from '../lib/studentSession'
 
 export default function Home() {
   const { user, isAnonymous, loading } = useAuth()
+  // 로그아웃/나가기 직후: 세션이 지워지는 중이므로 자동 재진입하지 않음
+  const signingOut = Boolean((useLocation().state as { signingOut?: boolean } | null)?.signingOut)
   // 학생(익명) 세션이 있을 때: 연결된 학생이 있으면 게시판으로 바로 이동
   const [studentRoute, setStudentRoute] = useState<'checking' | 'board' | 'home'>('checking')
 
   useEffect(() => {
-    if (loading || !user || !isAnonymous) return
+    if (loading || signingOut || !user || !isAnonymous) return
     let alive = true
     lookupMyStudent().then((result) => {
       if (!alive) return
@@ -22,12 +24,12 @@ export default function Home() {
     return () => {
       alive = false
     }
-  }, [loading, user, isAnonymous])
+  }, [loading, signingOut, user, isAnonymous])
 
-  if (loading) return <Spinner />
+  if (loading && !signingOut) return <Spinner />
   // 로그인한 교사는 대시보드로 (명시적으로 로그아웃해야 이 화면이 보임)
-  if (user && !isAnonymous) return <Navigate to="/teacher" replace />
-  if (user && isAnonymous) {
+  if (!signingOut && user && !isAnonymous) return <Navigate to="/teacher" replace />
+  if (!signingOut && user && isAnonymous) {
     if (studentRoute === 'checking') return <Spinner />
     if (studentRoute === 'board') return <Navigate to="/student/board" replace />
   }

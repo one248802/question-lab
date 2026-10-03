@@ -37,8 +37,9 @@ function Shell() {
   useEffect(() => setOpen(false), [location.pathname])
 
   const logout = async () => {
+    // 첫 화면으로 먼저 옮긴 뒤 세션을 끝냄 (첫 화면의 자동 재진입이 끼어들지 않도록 signingOut 표시)
+    navigate('/', { replace: true, state: { signingOut: true } })
     await supabase.auth.signOut()
-    navigate('/', { replace: true })
   }
 
   const nav = (
