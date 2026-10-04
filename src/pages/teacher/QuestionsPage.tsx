@@ -74,6 +74,7 @@ export default function QuestionsPage() {
   const [newTopicName, setNewTopicName] = useState('')
   const [topicBusy, setTopicBusy] = useState<string | null>(null)
   const [creatingTopic, setCreatingTopic] = useState(false)
+  const [topicPendingDelete, setTopicPendingDelete] = useState<QuestionTopic | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const todayKey = localDateKey(new Date(now))
 
@@ -133,6 +134,7 @@ export default function QuestionsPage() {
     setDateFilter('all')
     setRangeStart(localDateKey(new Date()))
     setRangeEnd(localDateKey(new Date()))
+    setTopicPendingDelete(null)
     load()
     const timer = window.setInterval(() => {
       if (document.visibilityState === 'visible') load()
@@ -264,11 +266,6 @@ export default function QuestionsPage() {
 
   const deleteTopic = async (topic: QuestionTopic) => {
     if (topicBusy) return
-    const count = topicCounts.get(topic.id) ?? 0
-    const ok = window.confirm(
-      `「${topic.name}」 질문 주제를 삭제할까요?\n\n이 주제의 질문과 모든 관련 기록이 함께 삭제됩니다.\n현재 질문 ${count}개와 질문 성장 이력, 투표, 생각 나눔, 선생님 피드백도 함께 삭제되며 복구할 수 없습니다.`,
-    )
-    if (!ok) return
 
     setTopicBusy(topic.id)
     setError(null)
@@ -276,6 +273,7 @@ export default function QuestionsPage() {
     setTopicBusy(null)
     if (err) return setError(topicError(err))
 
+    setTopicPendingDelete(null)
     setSelectedTopicIds((current) => {
       const next = new Set(current)
       next.delete(topic.id)
@@ -415,7 +413,8 @@ export default function QuestionsPage() {
                             variant={topic.status === 'active' ? 'mint' : 'secondary'}
                             onClick={() => changeTopicStatus(topic, 'active')}
                             disabled={busy || topic.status === 'active'}
-                            className="w-28 shrink-0 justify-center whitespace-nowrap hover:translate-y-0 active:translate-y-0 active:shadow-pop-sm"
+                            className="h-11 w-28 shrink-0 justify-center whitespace-nowrap"
+                            style={{ transform: 'none' }}
                           >
                             <PlayCircle className="size-4 shrink-0" aria-hidden />
                             <span className="whitespace-nowrap">진행 중</span>
@@ -425,7 +424,8 @@ export default function QuestionsPage() {
                             variant={topic.status === 'archived' ? 'sky' : 'secondary'}
                             onClick={() => changeTopicStatus(topic, 'archived')}
                             disabled={busy || topic.status === 'archived'}
-                            className="w-28 shrink-0 justify-center whitespace-nowrap hover:translate-y-0 active:translate-y-0 active:shadow-pop-sm"
+                            className="h-11 w-28 shrink-0 justify-center whitespace-nowrap"
+                            style={{ transform: 'none' }}
                           >
                             <Archive className="size-4 shrink-0" aria-hidden />
                             <span className="whitespace-nowrap">보관</span>
@@ -435,7 +435,8 @@ export default function QuestionsPage() {
                             variant="secondary"
                             onClick={() => changeTopicStatus(topic, 'hidden')}
                             disabled={busy || topic.status === 'hidden'}
-                            className="w-28 shrink-0 justify-center whitespace-nowrap hover:translate-y-0 active:translate-y-0 active:shadow-pop-sm"
+                            className="h-11 w-28 shrink-0 justify-center whitespace-nowrap"
+                            style={{ transform: 'none' }}
                           >
                             <EyeOff className="size-4 shrink-0" aria-hidden />
                             <span className="whitespace-nowrap">숨김</span>
@@ -443,9 +444,10 @@ export default function QuestionsPage() {
                           <Button
                             size="sm"
                             variant="danger"
-                            onClick={() => deleteTopic(topic)}
+                            onClick={() => setTopicPendingDelete(topic)}
                             disabled={busy}
-                            className="w-28 shrink-0 justify-center whitespace-nowrap hover:translate-y-0 active:translate-y-0 active:shadow-pop-sm"
+                            className="h-11 w-28 shrink-0 justify-center whitespace-nowrap"
+                            style={{ transform: 'none' }}
                           >
                             <Trash2 className="size-4 shrink-0" aria-hidden />
                             <span className="whitespace-nowrap">삭제</span>
@@ -495,8 +497,8 @@ export default function QuestionsPage() {
                 )}
               </div>
 
-              <div className="flex flex-wrap items-center gap-3">
-                <span className="text-base font-bold text-ink-soft">정렬</span>
+              <div className="flex flex-wrap items-center gap-2 xl:flex-nowrap">
+                <span className="shrink-0 text-base font-bold text-ink-soft">정렬</span>
                 <ChoiceChips<Sort>
                   size="sm"
                   options={[
@@ -506,8 +508,8 @@ export default function QuestionsPage() {
                   value={sort}
                   onChange={setSort}
                 />
-                <span className="hidden h-8 w-0.5 bg-line sm:block" />
-                <span className="text-base font-bold text-ink-soft">기간</span>
+                <span className="hidden h-8 w-0.5 shrink-0 bg-line sm:block" />
+                <span className="shrink-0 text-base font-bold text-ink-soft">기간</span>
                 <ChoiceChips<DateFilter>
                   size="sm"
                   options={[
@@ -520,7 +522,7 @@ export default function QuestionsPage() {
                   onChange={setDateFilter}
                 />
                 {dateFilter === 'range' && (
-                  <div className="flex flex-nowrap items-center gap-2 whitespace-nowrap">
+                  <div className="flex min-w-0 flex-nowrap items-center gap-1.5 whitespace-nowrap">
                     <Input
                       type="date"
                       value={rangeStart}
@@ -531,9 +533,9 @@ export default function QuestionsPage() {
                         if (rangeEnd && next > rangeEnd) setRangeEnd(next)
                       }}
                       aria-label="기간 시작일"
-                      className="min-h-10 w-[10.5rem] shrink-0 text-sm"
+                      className="min-h-10 w-[8.5rem] shrink-0 px-2 text-sm"
                     />
-                    <span className="font-bold text-ink-soft">~</span>
+                    <span className="shrink-0 font-bold text-ink-soft">~</span>
                     <Input
                       type="date"
                       value={rangeEnd}
@@ -545,7 +547,7 @@ export default function QuestionsPage() {
                         if (rangeStart && next < rangeStart) setRangeStart(next)
                       }}
                       aria-label="기간 종료일"
-                      className="min-h-10 w-[10.5rem] shrink-0 text-sm"
+                      className="min-h-10 w-[8.5rem] shrink-0 px-2 text-sm"
                     />
                   </div>
                 )}
@@ -575,6 +577,37 @@ export default function QuestionsPage() {
               ))}
             </ul>
           )}
+        </div>
+      )}
+
+      {topicPendingDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/35 p-4" role="dialog" aria-modal="true" aria-labelledby="delete-topic-title">
+          <div className="w-full max-w-lg rounded-3xl border-2 border-line bg-paper p-6 shadow-pop-lg">
+            <h2 id="delete-topic-title" className="font-display text-2xl">질문 주제를 삭제할까요?</h2>
+            <p className="mt-4 text-lg font-bold">「{topicPendingDelete.name}」</p>
+            <p className="mt-2 leading-relaxed text-ink-soft">
+              이 주제의 질문과 관련 기록이 함께 삭제되며 복구할 수 없습니다. 현재 질문 {topicCounts.get(topicPendingDelete.id) ?? 0}개와 질문 성장 이력, 투표, 생각 나눔, 선생님 피드백도 함께 삭제됩니다.
+            </p>
+            <div className="mt-6 flex justify-end gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => setTopicPendingDelete(null)}
+                disabled={topicBusy === topicPendingDelete.id}
+                style={{ transform: 'none' }}
+              >
+                취소
+              </Button>
+              <Button
+                variant="danger"
+                onClick={() => deleteTopic(topicPendingDelete)}
+                loading={topicBusy === topicPendingDelete.id}
+                disabled={Boolean(topicBusy && topicBusy !== topicPendingDelete.id)}
+                style={{ transform: 'none' }}
+              >
+                <Trash2 className="size-4" aria-hidden />삭제
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </>
