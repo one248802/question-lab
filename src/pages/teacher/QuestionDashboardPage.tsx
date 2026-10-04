@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { BarChart3, CalendarDays, MessageSquareText, Search, Star, ThumbsUp, TrendingUp } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { BarChart3, MessageSquareText, Search, Star, ThumbsUp, TrendingUp } from 'lucide-react'
 import { ClassPicker, NoClassYet } from '../../components/ClassPicker'
 import { Badge, Card, ChoiceChips, EmptyState, ErrorBox, Input, PageTitle, Select, Spinner } from '../../components/ui'
 import { useTeacher } from '../../contexts/TeacherContext'
@@ -294,9 +294,9 @@ export default function QuestionDashboardPage() {
   )
 }
 
-function MiniStat({ label, value, icon }: { label: string; value: number; icon: React.ReactNode }) {
+function MiniStat({ label, value, icon }: { label: string; value: number; icon: ReactNode }) {
   return <div className="flex items-center gap-3 rounded-3xl border-2 border-line bg-paper p-4 shadow-pop"><div className="flex size-11 items-center justify-center rounded-2xl bg-cream">{icon}</div><div><p className="text-sm text-ink-soft">{label}</p><p className="font-display text-3xl">{value}</p></div></div>
 }
 
-function Th({ children }: { children: React.ReactNode }) { return <th className="whitespace-nowrap px-4 py-3 font-bold">{children}</th> }
+function Th({ children }: { children: ReactNode }) { return <th className="whitespace-nowrap px-4 py-3 font-bold">{children}</th> }
 function Td({ value }: { value: number }) { return <td className="px-4 py-4 text-center text-lg font-bold">{value}</td> }
