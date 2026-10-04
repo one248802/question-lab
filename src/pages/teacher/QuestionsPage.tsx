@@ -270,9 +270,6 @@ export default function QuestionsPage() {
     )
     if (!ok) return
 
-    const confirmAgain = window.confirm('정말로 삭제할까요? 이 주제의 질문과 기록은 되돌릴 수 없습니다.')
-    if (!confirmAgain) return
-
     setTopicBusy(topic.id)
     setError(null)
     const { data, error: err } = await supabase.rpc('delete_question_topic', { p_topic_id: topic.id })
@@ -366,11 +363,9 @@ export default function QuestionsPage() {
               </div>
             </div>
 
-            <div className="mb-4 grid gap-2 text-sm text-ink-soft sm:grid-cols-2 lg:grid-cols-4">
-              <p className="rounded-2xl bg-mint-soft px-3 py-2"><strong className="text-mint-ink">진행 중</strong> · 현재 학생 활동용</p>
+            <div className="mb-4 grid gap-2 text-sm text-ink-soft sm:grid-cols-2">
               <p className="rounded-2xl bg-sky-soft px-3 py-2"><strong className="text-sky-ink">보관</strong> · 우리반 질문 모아보기에 보관</p>
               <p className="rounded-2xl bg-cream px-3 py-2"><strong className="text-ink">숨김</strong> · 교사만 보기, 우리반 질문에 표시되지 않음</p>
-              <p className="rounded-2xl bg-pink-soft px-3 py-2"><strong className="text-pink-ink">삭제</strong> · 주제와 관련 기록 삭제</p>
             </div>
 
             {topics.length === 0 ? (
@@ -420,36 +415,40 @@ export default function QuestionsPage() {
                             variant={topic.status === 'active' ? 'mint' : 'secondary'}
                             onClick={() => changeTopicStatus(topic, 'active')}
                             disabled={busy || topic.status === 'active'}
-                            className="w-24 shrink-0 hover:translate-y-0 active:translate-y-0 active:shadow-pop-sm"
+                            className="w-28 shrink-0 justify-center whitespace-nowrap hover:translate-y-0 active:translate-y-0 active:shadow-pop-sm"
                           >
-                            <PlayCircle className="size-4" aria-hidden />진행 중
+                            <PlayCircle className="size-4 shrink-0" aria-hidden />
+                            <span className="whitespace-nowrap">진행 중</span>
                           </Button>
                           <Button
                             size="sm"
                             variant={topic.status === 'archived' ? 'sky' : 'secondary'}
                             onClick={() => changeTopicStatus(topic, 'archived')}
                             disabled={busy || topic.status === 'archived'}
-                            className="w-24 shrink-0 hover:translate-y-0 active:translate-y-0 active:shadow-pop-sm"
+                            className="w-28 shrink-0 justify-center whitespace-nowrap hover:translate-y-0 active:translate-y-0 active:shadow-pop-sm"
                           >
-                            <Archive className="size-4" aria-hidden />보관
+                            <Archive className="size-4 shrink-0" aria-hidden />
+                            <span className="whitespace-nowrap">보관</span>
                           </Button>
                           <Button
                             size="sm"
                             variant="secondary"
                             onClick={() => changeTopicStatus(topic, 'hidden')}
                             disabled={busy || topic.status === 'hidden'}
-                            className="w-24 shrink-0 hover:translate-y-0 active:translate-y-0 active:shadow-pop-sm"
+                            className="w-28 shrink-0 justify-center whitespace-nowrap hover:translate-y-0 active:translate-y-0 active:shadow-pop-sm"
                           >
-                            <EyeOff className="size-4" aria-hidden />숨김
+                            <EyeOff className="size-4 shrink-0" aria-hidden />
+                            <span className="whitespace-nowrap">숨김</span>
                           </Button>
                           <Button
                             size="sm"
                             variant="danger"
                             onClick={() => deleteTopic(topic)}
                             disabled={busy}
-                            className="w-24 shrink-0 hover:translate-y-0 active:translate-y-0 active:shadow-pop-sm"
+                            className="w-28 shrink-0 justify-center whitespace-nowrap hover:translate-y-0 active:translate-y-0 active:shadow-pop-sm"
                           >
-                            <Trash2 className="size-4" aria-hidden />삭제
+                            <Trash2 className="size-4 shrink-0" aria-hidden />
+                            <span className="whitespace-nowrap">삭제</span>
                           </Button>
                         </div>
                       </li>
@@ -521,7 +520,7 @@ export default function QuestionsPage() {
                   onChange={setDateFilter}
                 />
                 {dateFilter === 'range' && (
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex flex-nowrap items-center gap-2 whitespace-nowrap">
                     <Input
                       type="date"
                       value={rangeStart}
@@ -532,7 +531,7 @@ export default function QuestionsPage() {
                         if (rangeEnd && next > rangeEnd) setRangeEnd(next)
                       }}
                       aria-label="기간 시작일"
-                      className="min-h-10 w-auto text-base"
+                      className="min-h-10 w-[10.5rem] shrink-0 text-sm"
                     />
                     <span className="font-bold text-ink-soft">~</span>
                     <Input
@@ -546,7 +545,7 @@ export default function QuestionsPage() {
                         if (rangeStart && next < rangeStart) setRangeStart(next)
                       }}
                       aria-label="기간 종료일"
-                      className="min-h-10 w-auto text-base"
+                      className="min-h-10 w-[10.5rem] shrink-0 text-sm"
                     />
                   </div>
                 )}
