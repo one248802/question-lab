@@ -51,6 +51,12 @@
   button:disabled {
     cursor: not-allowed;
   }
+  button:disabled:has(svg.lucide-eye-off) {
+    opacity: 1;
+    background-color: var(--color-lilac-soft);
+    color: var(--color-lilac-ink);
+    border-color: var(--color-lilac);
+  }
   :focus-visible {
     outline: 3px solid var(--color-sky);
     outline-offset: 2px;
