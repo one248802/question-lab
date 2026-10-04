@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, LayoutGrid, Lightbulb, LogOut, Menu, MessageCircleQuestion, School, Settings, Users, X } from 'lucide-react'
+import { LayoutDashboard, LayoutGrid, Lightbulb, LogOut, Menu, MessageCircleQuestion, School, Settings, UserRound, Users, X } from 'lucide-react'
 import { Spinner, cx } from '../../components/ui'
 import { useAuth } from '../../contexts/AuthContext'
 import { TeacherProvider, useTeacher } from '../../contexts/TeacherContext'
@@ -24,7 +24,7 @@ const THOUGHT_MENU = [
 
 const ETC_MENU = [
   { to: '/teacher/students', label: '학생 관리', icon: Users },
-  { to: '/teacher/settings', label: '내 설정', icon: Settings },
+  { to: '/teacher/settings', label: '내 정보', icon: UserRound },
 ]
 
 type MenuItem = { to: string; label: string; icon: typeof LayoutDashboard; end?: boolean }

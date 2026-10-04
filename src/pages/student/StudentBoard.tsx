@@ -15,11 +15,19 @@ const POLL_MS = 10_000
 
 type Sort = 'new' | 'votes'
 
+interface ActiveQuestionTopic {
+  id: string
+  name: string
+  question_count: number
+}
+
 export default function StudentBoard() {
   const navigate = useNavigate()
   const { user, isAnonymous, loading: authLoading } = useAuth()
 
   const [me, setMe] = useState<StudentContext | null>(null)
+  const [topics, setTopics] = useState<ActiveQuestionTopic[]>([])
+  const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null)
   const [questions, setQuestions] = useState<BoardQuestion[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -37,7 +45,10 @@ export default function StudentBoard() {
   const [thoughtBusy, setThoughtBusy] = useState(false)
 
   const load = useCallback(async () => {
-    const [ctx, list] = await Promise.all([supabase.rpc('get_my_student'), supabase.rpc('list_class_questions')])
+    const [ctx, topicResult] = await Promise.all([
+      supabase.rpc('get_my_student'),
+      supabase.rpc('list_active_question_topics'),
+    ])
     if (ctx.error) {
       setConnectionError(toMessage(ctx.error))
       setLoading(false)
@@ -47,15 +58,37 @@ export default function StudentBoard() {
       navigate('/student', { replace: true })
       return
     }
+    if (topicResult.error) {
+      setError(toMessage(topicResult.error))
+      setLoading(false)
+      return
+    }
+
     setConnectionError(null)
     setMe(ctx.data as StudentContext)
+
+    const nextTopics = (topicResult.data ?? []) as ActiveQuestionTopic[]
+    setTopics(nextTopics)
+    const nextTopicId = selectedTopicId && nextTopics.some((topic) => topic.id === selectedTopicId)
+      ? selectedTopicId
+      : nextTopics[0]?.id ?? null
+    setSelectedTopicId(nextTopicId)
+
+    if (!nextTopicId) {
+      setQuestions([])
+      setError(null)
+      setLoading(false)
+      return
+    }
+
+    const list = await supabase.rpc('list_active_topic_questions', { p_topic_id: nextTopicId })
     if (list.error) setError(toMessage(list.error))
     else {
       setError(null)
       setQuestions((list.data ?? []) as BoardQuestion[])
     }
     setLoading(false)
-  }, [navigate])
+  }, [navigate, selectedTopicId])
 
   useEffect(() => {
     if (authLoading) return
@@ -76,8 +109,9 @@ export default function StudentBoard() {
     return () => window.clearTimeout(t)
   }, [notice])
 
+  const selectedTopic = topics.find((topic) => topic.id === selectedTopicId) ?? null
   const showVotes = Boolean(me?.show_vote_counts)
-  const myVotes = questions.filter((q) => q.voted_by_me).length
+  const myVotes = me?.my_vote_count ?? 0
 
   const voteBlockedReason = (q: BoardQuestion): string | null => {
     if (!me) return null
@@ -102,7 +136,11 @@ export default function StudentBoard() {
   }
 
   const submitQuestion = async (content: string) => {
-    const { error: err } = await supabase.rpc('create_question', { p_content: content })
+    if (!selectedTopicId) return '선생님이 진행 중인 질문 주제가 없어요.'
+    const { error: err } = await supabase.rpc('create_question_for_topic', {
+      p_topic_id: selectedTopicId,
+      p_content: content,
+    })
     if (err) return toMessage(err)
     setNotice('질문이 올라갔어요!')
     await load()
@@ -218,16 +256,52 @@ export default function StudentBoard() {
       </header>
 
       <main className="mx-auto grid max-w-[90rem] gap-6 px-4 py-6 lg:grid-cols-[22rem_1fr] lg:items-start">
+        <section className="lg:col-span-2 rounded-3xl border-2 border-line bg-paper p-4 shadow-pop">
+          <div className="flex flex-wrap items-center gap-3">
+            <h2 className="shrink-0 font-display text-2xl">질문 주제</h2>
+            {topics.length === 0 ? (
+              <p className="text-ink-soft">지금 진행 중인 질문 주제가 없어요.</p>
+            ) : (
+              <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1">
+                {topics.map((topic) => (
+                  <button
+                    key={topic.id}
+                    type="button"
+                    onClick={() => setSelectedTopicId(topic.id)}
+                    className={cx(
+                      'shrink-0 rounded-2xl border-2 px-4 py-2 font-bold transition',
+                      topic.id === selectedTopicId
+                        ? 'border-sky bg-sky-soft text-sky-ink shadow-pop-sm'
+                        : 'border-line bg-cream text-ink hover:border-sky',
+                    )}
+                  >
+                    {topic.name} <span className="ml-1 text-sm opacity-70">{topic.question_count}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+
         <div className="flex flex-col gap-6 lg:sticky lg:top-24">
-          <QuestionComposer onSubmit={submitQuestion} />
+          {selectedTopic ? (
+            <div className="flex flex-col gap-2">
+              <p className="rounded-2xl bg-sky-soft px-4 py-2 text-sm font-bold text-sky-ink">현재 질문 주제 · {selectedTopic.name}</p>
+              <QuestionComposer onSubmit={submitQuestion} />
+            </div>
+          ) : (
+            <div className="rounded-3xl border-2 border-dashed border-line-strong bg-paper px-5 py-8 text-center text-lg font-bold text-ink-soft">
+              선생님이 질문 주제를 진행 중으로 바꾸면 여기에서 질문을 쓸 수 있어요.
+            </div>
+          )}
           <Button variant="sky" block onClick={() => navigate('/student/my-questions')}>
             <NotebookTabs className="size-5" aria-hidden />내 질문 모아보기
           </Button>
           <Button variant="secondary" block onClick={() => navigate('/student/question-gallery')}>
-            <CalendarDays className="size-5" aria-hidden />지난 질문 갤러리
+            <CalendarDays className="size-5" aria-hidden />우리반 질문 모아보기
           </Button>
           <OpenActivities />
-          {me.thought_sharing_enabled && (
+          {me.thought_sharing_enabled && selectedTopic && (
             <button
               type="button"
               onClick={() => document.getElementById('class-questions')?.scrollIntoView({ behavior: 'smooth' })}
@@ -241,9 +315,11 @@ export default function StudentBoard() {
 
         <section id="class-questions" className="@container flex min-w-0 flex-col gap-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="font-display text-3xl">우리 반 질문 <span className="text-ink-soft">{questions.length}</span></h2>
+            <h2 className="font-display text-3xl">
+              {selectedTopic ? `${selectedTopic.name} 질문` : '우리 반 질문'} <span className="text-ink-soft">{questions.length}</span>
+            </h2>
             <div className="flex items-center gap-2">
-              {showVotes && (
+              {showVotes && selectedTopic && (
                 <ChoiceChips<Sort>
                   size="sm"
                   options={[{ value: 'new', label: '최신순' }, { value: 'votes', label: '인기순' }]}
@@ -255,11 +331,13 @@ export default function StudentBoard() {
             </div>
           </div>
 
-          <VoteStatus me={me} myVotes={myVotes} />
+          {selectedTopic && <VoteStatus me={me} myVotes={myVotes} />}
           {connectionError && <ErrorBox message="연결이 잠시 불안정해요. 잠시 후 자동으로 다시 불러와요." />}
           <ErrorBox message={error} />
 
-          {sorted.length === 0 ? (
+          {!selectedTopic ? (
+            <EmptyState icon={<Inbox className="size-14" />} title="진행 중인 질문 주제가 없어요" />
+          ) : sorted.length === 0 ? (
             <EmptyState icon={<Inbox className="size-14" />} title="아직 질문이 없어요" />
           ) : (
             <ul className="grid gap-4 @min-[34rem]:grid-cols-2 @min-[54rem]:grid-cols-3">
