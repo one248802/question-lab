@@ -57,9 +57,23 @@
   }
 }
 
+/* 질문 주제 상태 버튼: 숨김도 진행 중/보관과 같은 disabled 명도로 표시 */
 button:disabled:has(svg.lucide-eye-off) {
-  opacity: 1 !important;
+  opacity: 0.5 !important;
   background-color: var(--color-lilac-soft) !important;
   color: var(--color-lilac-ink) !important;
   border-color: var(--color-lilac) !important;
+}
+
+/* 질문 주제 목록의 삭제 버튼은 평소엔 중립색, 누르는 순간만 위험색으로 표시 */
+ul.divide-y-2 button:has(svg.lucide-trash-2) {
+  background-color: var(--color-paper) !important;
+  color: var(--color-ink) !important;
+  border-color: var(--color-line-strong) !important;
+}
+
+ul.divide-y-2 button:has(svg.lucide-trash-2):active {
+  background-color: var(--color-pink-soft) !important;
+  color: var(--color-pink-ink) !important;
+  border-color: var(--color-pink) !important;
 }
