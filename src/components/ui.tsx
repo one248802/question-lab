@@ -41,21 +41,26 @@ export function Button({
   children,
   disabled,
   type = 'button',
+  style,
   ...rest
 }: ButtonProps) {
+  const stableVisual = style?.transform === 'none'
+
   return (
     <button
       type={type}
       disabled={disabled || loading}
       className={cx(
         'inline-flex items-center justify-center border-2 font-bold select-none transition',
-        variant !== 'ghost' && 'shadow-pop-sm hover:-translate-y-0.5 hover:shadow-pop active:translate-y-0.5 active:shadow-none',
-        'disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-pop-sm',
+        variant !== 'ghost' && !stableVisual && 'shadow-pop-sm hover:-translate-y-0.5 hover:shadow-pop active:translate-y-0.5 active:shadow-none',
+        'disabled:opacity-50 disabled:hover:translate-y-0',
+        variant !== 'ghost' && !stableVisual && 'disabled:hover:shadow-pop-sm',
         VARIANTS[variant],
         SIZES[size],
         block && 'w-full',
         className,
       )}
+      style={stableVisual ? { ...style, transform: 'none', boxShadow: 'none' } : style}
       {...rest}
     >
       {loading ? <LoaderCircle className="size-5 animate-spin" aria-hidden /> : null}
@@ -81,8 +86,20 @@ export function Label({ children, htmlFor }: { children: ReactNode; htmlFor?: st
 const FIELD =
   'w-full rounded-2xl border-2 border-line-strong bg-paper px-4 text-lg text-ink placeholder:text-ink-soft/60 focus:border-sky focus:outline-none'
 
-export function Input({ className, ...rest }: InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={cx(FIELD, 'min-h-14', className)} {...rest} />
+function arbitraryWidth(className?: string) {
+  const match = className?.match(/(?:^|\s)w-\[([0-9.]+(?:rem|px|em|%|vw|ch))\](?:\s|$)/)
+  return match?.[1]
+}
+
+export function Input({ className, style, ...rest }: InputHTMLAttributes<HTMLInputElement>) {
+  const fixedWidth = arbitraryWidth(className)
+  return (
+    <input
+      className={cx(FIELD, 'min-h-14', className)}
+      style={fixedWidth ? { width: fixedWidth, ...style } : style}
+      {...rest}
+    />
+  )
 }
 
 export function Textarea({ className, ...rest }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
