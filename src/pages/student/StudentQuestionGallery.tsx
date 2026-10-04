@@ -84,13 +84,13 @@ export default function StudentQuestionGallery() {
 
       <main className="mx-auto flex max-w-6xl flex-col gap-5 px-4 py-6">
         <div>
-          <h1 className="flex items-center gap-2 font-display text-3xl sm:text-4xl"><CalendarDays className="size-9 text-sky-ink" aria-hidden />지난 질문 갤러리</h1>
-          <p className="mt-2 text-lg text-ink-soft">질문을 올린 날짜가 자동으로 기록돼요. 질문을 업그레이드하기 전 버전도 지난 기록으로 남아요.</p>
+          <h1 className="flex items-center gap-2 font-display text-3xl sm:text-4xl"><CalendarDays className="size-9 text-sky-ink" aria-hidden />우리반 질문 모아보기</h1>
+          <p className="mt-2 text-lg text-ink-soft">선생님이 보관한 질문을 날짜별로 모아 봐요. 질문을 업그레이드하기 전 버전도 기록으로 남아요.</p>
         </div>
         <ErrorBox message={error} />
 
         {groups.length === 0 ? (
-          <EmptyState icon={<CalendarDays className="size-14" />} title="아직 쌓인 질문 기록이 없어요" />
+          <EmptyState icon={<CalendarDays className="size-14" />} title="아직 보관된 질문이 없어요" />
         ) : (
           <>
             <div className="flex gap-3 overflow-x-auto pb-2">
