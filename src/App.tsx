@@ -15,7 +15,7 @@ import StudentThoughtTopic from './pages/student/StudentThoughtTopic'
 import StudentThoughtTopics from './pages/student/StudentThoughtTopics'
 import ActivitiesPage from './pages/teacher/ActivitiesPage'
 import ClassesPage from './pages/teacher/ClassesPage'
-import Dashboard from './pages/teacher/Dashboard'
+import QuestionDashboardPage from './pages/teacher/QuestionDashboardPage'
 import QuestionSettingsPage from './pages/teacher/QuestionSettingsPage'
 import QuestionsPage from './pages/teacher/QuestionsPage'
 import ResetPassword from './pages/teacher/ResetPassword'
@@ -65,9 +65,10 @@ export default function App() {
             <Route path="/teacher/login" element={<TeacherLogin />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/teacher" element={<TeacherLayout />}>
-              <Route index element={<Dashboard />} />
+              <Route index element={<Navigate to="classes" replace />} />
               <Route path="classes" element={<ClassesPage />} />
               <Route path="questions" element={<QuestionsPage />} />
+              <Route path="question-dashboard" element={<QuestionDashboardPage />} />
               <Route path="question-settings" element={<QuestionSettingsPage />} />
               <Route path="activities" element={<ActivitiesPage />} />
               <Route path="thoughts" element={<ThoughtTopicsPage />} />

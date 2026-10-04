@@ -1,18 +1,18 @@
 import { useEffect, useState } from 'react'
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, LayoutGrid, Lightbulb, LogOut, Menu, MessageCircleQuestion, School, Settings, UserRound, Users, X } from 'lucide-react'
+import { BarChart3, LayoutGrid, Lightbulb, LogOut, Menu, MessageCircleQuestion, School, Settings, UserRound, Users, X } from 'lucide-react'
 import { Spinner, cx } from '../../components/ui'
 import { useAuth } from '../../contexts/AuthContext'
 import { TeacherProvider, useTeacher } from '../../contexts/TeacherContext'
 import { supabase } from '../../lib/supabase'
 
 const CORE_MENU = [
-  { to: '/teacher', label: '대시보드', icon: LayoutDashboard, end: true },
   { to: '/teacher/classes', label: '학급 관리', icon: School },
 ]
 
 const QUESTION_MENU = [
   { to: '/teacher/questions', label: '질문 관리', icon: MessageCircleQuestion },
+  { to: '/teacher/question-dashboard', label: '대시보드', icon: BarChart3 },
   { to: '/teacher/activities', label: '분류 활동', icon: LayoutGrid },
   { to: '/teacher/question-settings', label: '설정', icon: Settings },
 ]
@@ -27,7 +27,7 @@ const ETC_MENU = [
   { to: '/teacher/settings', label: '내 정보', icon: UserRound },
 ]
 
-type MenuItem = { to: string; label: string; icon: typeof LayoutDashboard; end?: boolean }
+type MenuItem = { to: string; label: string; icon: typeof School; end?: boolean }
 
 export default function TeacherLayout() {
   const { user, isAnonymous, loading } = useAuth()
